@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Radtraining</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0F1D18">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Radtraining">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0F1D18;
+    --panel:#16281F;
+    --panel-2:#1C332A;
+    --line:#2C463C;
+    --line-soft:#213B31;
+    --ink:#EAF0E6;
+    --ink-soft:#93A99B;
+    --ink-dim:#6C8377;
+    --gold:#E7B24F;
+    --ember:#E4713F;
+    --crimson:#E14C63;
+    --glacier:#6FB4DB;
+    --good:#5FCB93;
+    --alt:#B98FD8;
+    --shadow: 0 2px 14px rgba(0,0,0,.28);
+    --radius: 16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 460px at 12% -8%, rgba(231,178,79,.07), transparent 60%),
+      radial-gradient(700px 420px at 95% 10%, rgba(111,180,219,.06), transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .app{max-width:1120px;margin:0 auto;padding:26px 18px 90px;}
+  :focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
+
+  header.top{
+    display:flex;justify-content:space-between;align-items:center;gap:14px;
+    flex-wrap:wrap;padding-bottom:16px;margin-bottom:22px;border-bottom:1px solid var(--line-soft);
+  }
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:0 0 4px;}
+  h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(24px,3.6vw,32px);margin:0;color:var(--ink);letter-spacing:-0.01em;}
+  .phase-chip{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--panel-2);border:1px solid var(--line);padding:7px 13px;border-radius:20px;color:var(--ink-soft);}
+  .phase-chip .dot{width:8px;height:8px;border-radius:50%;}
+
+  section{margin-bottom:30px;}
+  h2.section-title{font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-dim);margin:0 0 12px;display:flex;align-items:center;gap:10px;}
+  h2.section-title::after{content:"";flex:1;height:1px;background:var(--line-soft);}
+  h2.section-title .tier{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;background:var(--panel-2);border:1px solid var(--line);padding:2px 8px;border-radius:10px;color:var(--ink-dim);text-transform:none;}
+
+  /* ---------- Block manager ---------- */
+  .block-manager{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);}
+  .block-switch-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .block-switch-row select{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);padding:7px 12px;border-radius:10px;max-width:280px;}
+  .block-switch-row button{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-soft);padding:7px 13px;border-radius:20px;cursor:pointer;}
+  .block-switch-row button:hover{border-color:var(--ink-dim);}
+  #deleteBlockBtn{color:var(--crimson);}
+  .new-block-panel{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line-soft);}
+  .nb-tabs{display:flex;gap:8px;margin-bottom:12px;}
+  .nb-tab{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:none;border:1px solid var(--line);color:var(--ink-dim);padding:5px 12px;border-radius:16px;cursor:pointer;}
+  .nb-tab.active{background:var(--panel-2);color:var(--ink);border-color:var(--gold);}
+  .nb-pane{display:flex;flex-direction:column;gap:8px;max-width:440px;}
+  .nb-pane input, .nb-pane textarea{font-family:'IBM Plex Mono',monospace;font-size:12px;background:rgba(0,0,0,.22);border:1px solid var(--line);color:var(--ink);padding:7px 9px;border-radius:8px;width:100%;}
+  .nb-pane textarea{font-size:10.8px;}
+  .nb-pane .nb-hint{font-size:11px;color:var(--ink-dim);}
+  .nb-pane button{align-self:flex-start;font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--gold);border:none;color:#1B1305;padding:7px 14px;border-radius:16px;cursor:pointer;font-weight:600;}
+  .nb-pane .nb-secondary{background:var(--panel-2);color:var(--ink-soft);border:1px solid var(--line);font-weight:400;}
+  .nb-error{font-size:11.5px;color:var(--crimson);min-height:14px;}
+  .strava-match-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:14px;}
+  .strava-match-table th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;color:var(--ink-dim);padding:6px 8px;border-bottom:1px solid var(--line);}
+  .strava-match-table td{padding:7px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top;color:var(--ink-soft);}
+  .strava-match-table select{font-family:'IBM Plex Mono',monospace;font-size:11px;background:rgba(0,0,0,.22);border:1px solid var(--line);color:var(--ink);padding:4px 6px;border-radius:6px;max-width:220px;}
+  .strava-summary{font-size:11px;color:var(--ink-dim);margin:2px 0 0;}
+  #stravaApplyBtn{margin-top:12px;}
+
+  /* ---------- Hero ---------- */
+  .hero{display:grid;grid-template-columns:200px 1fr;gap:26px;align-items:center;background:linear-gradient(160deg, var(--panel), var(--panel-2));border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);}
+  @media(max-width:640px){.hero{grid-template-columns:1fr;justify-items:center;text-align:center;}}
+  .ring-wrap{position:relative;width:176px;height:176px;flex-shrink:0;}
+  .ring-track,.ring-progress{position:absolute;inset:0;border-radius:50%;}
+  .ring-track{opacity:.20;}
+  .ring-hole{position:absolute;inset:15px;border-radius:50%;background:var(--panel-2);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:1px solid var(--line-soft);}
+  .ring-hole .pct{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:30px;color:var(--ink);line-height:1;}
+  .ring-hole .lbl{font-size:9.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;font-family:'IBM Plex Mono',monospace;}
+  .ring-hole .days{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--gold);margin-top:7px;}
+  .field-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  @media(max-width:640px){.field-grid{grid-template-columns:1fr 1fr;width:100%;}}
+  .field{background:rgba(0,0,0,.16);border:1px solid var(--line-soft);border-radius:10px;padding:12px 13px;}
+  .field .v{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;color:var(--ink);}
+  .field .l{font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;font-family:'IBM Plex Mono',monospace;}
+  .field .s{font-size:11px;color:var(--ink-soft);margin-top:5px;}
+  .hero-msg{grid-column:1/-1;font-size:13px;color:var(--ink-soft);margin-top:2px;}
+
+  /* ---------- Heatmap ---------- */
+  .heatmap-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);}
+  .heatmap-row{display:flex;gap:10px;}
+  .heat-daylabels{display:flex;flex-direction:column;gap:4px;justify-content:flex-start;padding-top:2px;}
+  .heat-daylabels span{font-size:9px;color:var(--ink-dim);height:20px;display:flex;align-items:center;font-family:'IBM Plex Mono',monospace;}
+  .heat-cols{display:flex;gap:4px;flex:1;overflow-x:auto;}
+  .heat-col{display:flex;flex-direction:column;gap:4px;flex:1;min-width:22px;}
+  .heat-col-label{font-size:9.5px;color:var(--ink-dim);text-align:center;margin-bottom:2px;font-family:'IBM Plex Mono',monospace;}
+  .heat-cell{height:20px;border-radius:4px;border:1px solid var(--line-soft);cursor:pointer;transition:transform .1s;}
+  .heat-cell:hover{transform:scale(1.12);}
+  .heat-cell.future{background:transparent;border-style:dashed;cursor:default;}
+  .heat-cell.future:hover{transform:none;}
+  .heat-cell.rest{background:transparent;border-color:var(--line-soft);}
+  .heat-legend{display:flex;align-items:center;gap:14px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-soft);flex-wrap:wrap;}
+  .heat-legend .grp{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-dim);}
+  .heat-legend .swatch{width:12px;height:12px;border-radius:3px;border:1px solid var(--line-soft);}
+
+  /* ---------- Skyline ---------- */
+  .skyline-panel{background:linear-gradient(180deg, var(--panel), var(--panel-2));border:1px solid var(--line);border-radius:var(--radius);padding:22px 18px 14px;box-shadow:var(--shadow);}
+  .skyline{display:flex;align-items:flex-end;gap:6px;height:180px;position:relative;border-bottom:2px solid var(--line);padding:0 4px;overflow-x:auto;}
+  .peak-wrap{flex:1;min-width:54px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;position:relative;background:none;border:none;padding:0;font:inherit;color:inherit;}
+  .peak-mark{position:absolute;top:-22px;font-size:10px;font-family:'IBM Plex Mono',monospace;color:#12241C;font-weight:600;white-space:nowrap;background:var(--gold);padding:1px 7px;border-radius:20px;opacity:0;transform:translateY(4px);transition:opacity .15s, transform .15s;}
+  .peak-wrap.is-today .peak-mark{opacity:1;transform:translateY(0);}
+  .peak-svg-holder{width:100%;display:flex;justify-content:center;align-items:flex-end;}
+  .peak-wrap svg{display:block;width:86%;}
+  .peak-wrap:not(.selected):hover .peak-svg-holder{opacity:.88;}
+  .peak-label{margin-top:8px;text-align:center;}
+  .peak-label .wk{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:var(--ink);}
+  .peak-label .ph{font-size:10px;color:var(--ink-dim);margin-top:1px;font-family:'IBM Plex Mono',monospace;}
+  .peak-wrap.selected .peak-label .wk{color:var(--gold);}
+  .skyline-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px dashed var(--line-soft);}
+  .leg-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-dim);}
+  .leg-dot{width:9px;height:9px;border-radius:2px;display:inline-block;}
+
+  /* ---------- Filter chips ---------- */
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .filter-chip{font-family:'IBM Plex Mono',monospace;font-size:11.5px;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);padding:6px 13px;border-radius:20px;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:6px;}
+  .filter-chip .dot{width:7px;height:7px;border-radius:50%;}
+  .filter-chip:hover{border-color:var(--ink-dim);}
+  .filter-chip.active{background:var(--panel-2);border-color:currentColor;color:var(--ink);}
+  .filter-hint{font-size:11px;color:var(--ink-dim);margin-left:auto;}
+
+  /* ---------- Today ---------- */
+  .today-card{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow);}
+  .today-card .kicker{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px;}
+  .today-card h3{font-family:'Space Grotesk',sans-serif;margin:0 0 12px;font-size:19px;color:var(--ink);}
+  .today-blocks{display:grid;gap:9px;}
+  .today-blocks .mini-block{background:rgba(0,0,0,.18);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--ink-soft);}
+  .today-blocks .mini-block b{font-family:'Space Grotesk',sans-serif;color:var(--ink);}
+  .today-empty{color:var(--ink-soft);font-size:13.5px;}
+
+  /* ---------- Week nav ---------- */
+  .week-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .week-tab{font-family:'IBM Plex Mono',monospace;font-size:12.5px;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);padding:7px 13px;border-radius:20px;cursor:pointer;transition:all .12s;}
+  .week-tab:hover{border-color:var(--ink-dim);}
+  .week-tab.active{background:var(--gold);border-color:var(--gold);color:#1B1305;}
+  .week-range{font-size:12px;color:var(--ink-dim);margin:-6px 0 16px;font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- Day grid ---------- */
+  .day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:9px;}
+  @media(max-width:880px){.day-grid{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));}}
+  .day-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 10px;display:flex;flex-direction:column;gap:7px;min-height:120px;}
+  .day-card.is-today{border-color:var(--gold);box-shadow:0 0 0 2px rgba(231,178,79,.28);}
+  .day-head{display:flex;justify-content:space-between;align-items:baseline;}
+  .day-head .d{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:var(--ink);}
+  .day-head .dt{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-dim);}
+  .block{border-radius:8px;padding:7px 8px;font-size:12px;background:var(--panel-2);border:1px solid var(--line-soft);transition:opacity .15s, filter .15s;}
+  .block.dimmed{opacity:.32;filter:saturate(.4);}
+  .block.tag-sweetspot{border-left:3px solid var(--gold);}
+  .block.tag-threshold{border-left:3px solid var(--ember);}
+  .block.tag-vo2max{border-left:3px solid var(--crimson);}
+  .block.tag-taper{border-left:3px solid var(--glacier);}
+  .block.tag-kraft{border-left:3px solid #8FA98F;}
+  .block.tag-lang{border-left:3px solid #A9B96B;}
+  .block.tag-locker{border-left:3px solid var(--line);}
+  .block.tag-test{border-left:3px solid var(--gold); background:#2A2410;}
+  .block.tag-alternative{border-left:3px dashed var(--alt);}
+  .block .btitle{font-weight:600;margin-bottom:2px;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:6px;}
+  .block .bdetail{color:var(--ink-soft);font-size:11.3px;}
+  .rest-note{font-size:11.5px;color:var(--ink-dim);font-style:italic;padding:4px 2px;}
+  .entry-edit-btn{background:none;border:none;color:var(--ink-dim);cursor:pointer;font-size:11px;padding:0;flex-shrink:0;}
+  .entry-edit-btn:hover{color:var(--gold);}
+
+  .block .done-row{display:flex;align-items:center;gap:6px;margin-top:6px;}
+  .block .done-row input[type=checkbox]{width:14px;height:14px;accent-color:var(--gold);}
+  .block .done-row label{font-size:11px;color:var(--ink-dim);cursor:pointer;}
+  .log-fields{display:none;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;}
+  .log-fields.open{display:grid;}
+  .log-fields input, .log-fields select, .log-fields textarea{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 5px;border:1px solid var(--line);border-radius:5px;background:rgba(0,0,0,.22);color:var(--ink);width:100%;}
+  .log-fields textarea{grid-column:1/-1;resize:vertical;min-height:28px;font-family:'Inter',sans-serif;}
+  .log-fields .fl{display:flex;flex-direction:column;gap:2px;}
+  .log-fields .fl.full{grid-column:1/-1;}
+  .log-fields .fl span{font-size:9.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.03em;}
+  .block.is-done{background:#16281F;box-shadow:inset 0 0 0 1px rgba(95,203,147,.25);}
+  .clear-btn{grid-column:1/-1;background:none;border:none;color:var(--ember);font-size:10.5px;cursor:pointer;text-align:right;padding:0;font-family:'IBM Plex Mono',monospace;}
+  .vi-note{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--good);grid-column:1/-1;min-height:12px;}
+
+  .add-entry-btn{font-family:'IBM Plex Mono',monospace;font-size:10.5px;background:none;border:1px dashed var(--line);color:var(--ink-dim);padding:6px;border-radius:8px;cursor:pointer;width:100%;margin-top:2px;}
+  .add-entry-btn:hover{border-color:var(--gold);color:var(--gold);}
+  .entry-form{background:rgba(0,0,0,.2);border:1px dashed var(--line);border-radius:8px;padding:8px;margin-top:6px;display:flex;flex-direction:column;gap:5px;}
+  .entry-form input, .entry-form select{font-family:'IBM Plex Mono',monospace;font-size:11px;background:rgba(0,0,0,.25);border:1px solid var(--line);color:var(--ink);padding:4px 6px;border-radius:5px;width:100%;}
+  .entry-form .ef-row{display:flex;gap:5px;align-items:center;}
+  .entry-form .ef-row select{flex:1;}
+  .entry-form .ef-row input{flex:1;}
+  .entry-form .ef-loggable{font-size:10px;color:var(--ink-dim);display:flex;align-items:center;gap:4px;white-space:nowrap;}
+  .entry-form .ef-actions{display:flex;gap:6px;margin-top:2px;}
+  .entry-form button{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:4px 10px;border-radius:12px;cursor:pointer;border:1px solid var(--line);background:var(--panel-2);color:var(--ink-soft);}
+  .entry-form .ef-save{background:var(--gold);color:#1B1305;border:none;font-weight:600;}
+  .entry-form .ef-delete{color:var(--crimson);}
+
+  /* ---------- Charts ---------- */
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+  .chart-grid.two{grid-template-columns:1fr 1fr;}
+  @media(max-width:900px){.chart-grid,.chart-grid.two{grid-template-columns:1fr;}}
+  .chart-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;}
+  .chart-card h4{font-family:'Space Grotesk',sans-serif;font-size:13px;margin:0 0 3px;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .chart-card h4 .latest{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--gold);font-weight:400;}
+  .chart-card .band-note{font-size:10.5px;color:var(--ink-dim);margin-bottom:8px;font-family:'IBM Plex Mono',monospace;}
+  .chart-empty{font-size:12px;color:var(--ink-dim);padding:26px 4px;text-align:center;}
+  .chart-card canvas{max-height:210px;}
+  .spark-card canvas{max-height:82px;}
+
+  /* ---------- History / block overview ---------- */
+  .history-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:11.5px;color:var(--ink-dim);}
+  .history-toolbar button{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-soft);padding:4px 10px;border-radius:14px;cursor:pointer;}
+  .table-scroll{overflow-x:auto;}
+  .history-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:640px;}
+  .history-table th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-dim);padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  .history-table td{padding:7px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top;color:var(--ink-soft);}
+  .history-table tr:last-child td{border-bottom:none;}
+  .tag-chip{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 7px;border-radius:20px;display:inline-block;color:#0F1D18;font-weight:600;}
+  #blockOverviewWrap .history-table{min-width:520px;}
+  #blockOverviewWrap button{font-family:'IBM Plex Mono',monospace;font-size:10.5px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-soft);padding:3px 10px;border-radius:12px;cursor:pointer;}
+
+  footer{margin-top:44px;font-size:11px;color:var(--ink-dim);text-align:center;}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <div>
+      <p class="eyebrow" id="blockEyebrow">Trainingstracker</p>
+      <h1>Blockprofil</h1>
+    </div>
+    <div class="phase-chip" id="phaseChip"></div>
+  </header>
+
+  <section>
+    <h2 class="section-title">Blockverwaltung</h2>
+    <div class="block-manager">
+      <div class="block-switch-row">
+        <select id="blockSelect"></select>
+        <button id="newBlockToggle">+ Neuer Block</button>
+        <button id="deleteBlockBtn">Block löschen</button>
+      </div>
+      <div class="block-switch-row" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-soft)">
+        <button id="exportDataBtn">⬇ Backup exportieren</button>
+        <button id="importDataBtn">⬆ Backup importieren</button>
+        <input type="file" id="importFileInput" accept="application/json" style="display:none">
+        <span class="nb-hint" style="align-self:center">sichert alle Blöcke &amp; Logs als Datei</span>
+      </div>
+      <div class="new-block-panel" id="newBlockPanel" style="display:none">
+        <div class="nb-tabs">
+          <button class="nb-tab active" data-tab="empty">Leerer Block</button>
+          <button class="nb-tab" data-tab="json">JSON importieren</button>
+        </div>
+        <div class="nb-pane" id="nbEmpty">
+          <input type="text" id="nbName" placeholder="Name, z.B. Grundlagenblock Winter">
+          <input type="date" id="nbStart">
+          <input type="number" id="nbWeeks" min="1" max="20" value="6" placeholder="Anzahl Wochen">
+          <div class="nb-hint">Legt einen leeren Block an — Einträge fügst du danach direkt bei den Tagen hinzu ("+ Eintrag").</div>
+          <button id="nbCreateEmpty">Anlegen</button>
+        </div>
+        <div class="nb-pane" id="nbJson" style="display:none">
+          <div class="nb-hint">Schema: {name, startDate "YYYY-MM-DD", weeks:[{phaseLabel, phaseColor, days:[7× {rest, blocks:[{title, detail, tag, loggable, power:[min,max]}]}]}]}. Gültige tags: sweetspot, threshold, vo2max, taper, kraft, lang, locker, test.</div>
+          <button id="nbShowExample" class="nb-secondary">Beispiel einfügen</button>
+          <textarea id="nbJsonInput" rows="10" placeholder="JSON hier einfügen..."></textarea>
+          <div class="nb-error" id="nbJsonError"></div>
+          <button id="nbImportJson">Importieren</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Strava-Import</h2>
+    <div class="block-manager">
+      <div class="nb-hint">Ich hole deine Fahrten über die Strava-Verbindung im Chat und liefere sie dir als JSON in diesem Format — hier einfügen, dann jeder Aktivität den passenden Plan-Eintrag zuweisen.</div>
+      <div class="nb-pane" style="max-width:600px;margin-top:10px">
+        <button id="stravaShowExample" class="nb-secondary">Beispiel-Format zeigen</button>
+        <textarea id="stravaJsonInput" rows="6" placeholder='[{"date":"2026-09-15","name":"Morgenfahrt","distanceKm":13.2,"elevationM":105,"durationMin":32,"avgWatts":145,"np":152,"avgHr":128}]'></textarea>
+        <div class="nb-error" id="stravaJsonError"></div>
+        <button id="stravaParseBtn">Zuordnen</button>
+      </div>
+      <div id="stravaMatchWrap"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Überblick<span class="tier">Tier 1</span></h2>
+    <div class="hero">
+      <div class="ring-wrap">
+        <div class="ring-track" id="ringTrack"></div>
+        <div class="ring-progress" id="ringProgress"></div>
+        <div class="ring-hole">
+          <div class="pct" id="ringPct">–</div>
+          <div class="lbl">Blockzeit</div>
+          <div class="days" id="ringDays"></div>
+        </div>
+      </div>
+      <div class="field-grid" id="fieldGrid"></div>
+      <div class="hero-msg" id="heroMsg"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Konsistenz · täglich<span class="tier">Tier 1</span></h2>
+    <div class="heatmap-panel">
+      <div class="heatmap-row">
+        <div class="heat-daylabels"><span></span><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div>
+        <div class="heat-cols" id="heatCols"></div>
+      </div>
+      <div class="heat-legend">
+        <span class="grp"><span class="swatch" style="background:transparent;border-style:dashed"></span>zukünftig</span>
+        <span class="grp"><span class="swatch" style="background:rgba(231,178,79,.18)"></span>offen</span>
+        <span class="grp"><span class="swatch" style="background:rgba(231,178,79,.9)"></span>erledigt</span>
+        <span class="grp"><span class="swatch" style="background:transparent"></span>Ruhetag (zählt nicht)</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Blockübersicht · Phasen<span class="tier">Tier 1</span></h2>
+    <div class="skyline-panel">
+      <div class="skyline" id="skyline"></div>
+      <div class="skyline-legend" id="skylineLegend"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Filter<span class="tier">Zoom</span></h2>
+    <div class="filter-row" id="filterRow"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Heute</h2>
+    <div class="today-card" id="todayCard"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Wochenplan</h2>
+    <div class="week-tabs" id="weekTabs"></div>
+    <div class="week-range" id="weekRange"></div>
+    <div class="day-grid" id="dayGrid"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Trend je Belastungstyp<span class="tier">Tier 2 · Zoom</span></h2>
+    <div class="chart-grid" id="sparkGrid"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Wochenvergleich<span class="tier">Tier 2 · Zoom</span></h2>
+    <div class="chart-grid">
+      <div class="chart-card"><h4>Adherence pro Woche</h4><div id="adherenceWrap"><canvas id="adherenceChart"></canvas></div></div>
+      <div class="chart-card"><h4>Wochenvolumen</h4><div id="volumeWrap"><canvas id="volumeChart"></canvas></div></div>
+      <div class="chart-card"><h4>Krafttraining: geplant vs. erledigt</h4><div id="strengthWrap"><canvas id="strengthChart"></canvas></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Detailanalyse<span class="tier">Tier 3 · Detail</span></h2>
+    <div class="chart-grid two">
+      <div class="chart-card"><h4>Zielabweichung strukturierter Einheiten</h4><div id="deviationWrap"><canvas id="deviationChart"></canvas></div></div>
+      <div class="chart-card"><h4>Zonprofil (Adherence je Belastungstyp)</h4><div id="radarWrap"><canvas id="radarChart"></canvas></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Log<span class="tier">Tier 3 · Detail</span></h2>
+    <div class="history-toolbar" id="historyToolbar"></div>
+    <div class="table-scroll" id="historyWrap"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Alle Blöcke · Saison-Überblick</h2>
+    <div class="table-scroll" id="blockOverviewWrap"></div>
+  </section>
+
+  <footer>Daten werden lokal für diesen Tracker gespeichert.</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ Constants ============ */
+  const TAG_META = {
+    sweetspot:{label:'Sweet Spot', color:'#E7B24F'},
+    threshold:{label:'Threshold', color:'#E4713F'},
+    vo2max:{label:'VO2max', color:'#E14C63'},
+    taper:{label:'Taper', color:'#6FB4DB'},
+    kraft:{label:'Kraft', color:'#8FA98F'},
+    lang:{label:'Lange Einheit', color:'#A9B96B'},
+    locker:{label:'Locker', color:'#7C9186'},
+    test:{label:'FTP-Test', color:'#E7B24F'},
+    alternative:{label:'Alternative', color:'#B98FD8'}
+  };
+  const FILTER_TAGS = ['sweetspot','threshold','vo2max','kraft','lang','locker','alternative'];
+  const DAY_LABELS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  const INTENSITY_WEIGHTS = {locker:1, sweetspot:2, threshold:3, vo2max:4, taper:1.5, test:3, kraft:1.5, lang:2};
+
+  const EXAMPLE_BLOCK = {
+    name: "Beispiel-Block",
+    startDate: "2026-11-02",
+    weeks: [
+      { phaseLabel:"Grundlage", phaseColor:"#6FB4DB", days: [
+        { rest:null, blocks:[
+          {title:"Hinfahrt: H-kurz", detail:"locker Z1–Z2", tag:"locker", loggable:true},
+          {title:"Rückfahrt", detail:"Sweet Spot 2×10 Min", tag:"sweetspot", loggable:true, power:[200,210]}
+        ]},
+        { rest:null, blocks:[ {title:"Hinfahrt", detail:"locker", tag:"locker", loggable:true} ] },
+        { rest:"frei", blocks:[ {title:"Krafttraining A", detail:"Beinpresse 4×4–6 @85–90%", tag:"kraft", loggable:true} ] },
+        { rest:null, blocks:[] },
+        { rest:null, blocks:[] },
+        { rest:null, blocks:[ {title:"Lange Ausfahrt", detail:"2 Std. Z2", tag:"lang", loggable:true} ] },
+        { rest:"Ruhetag", blocks:[] }
+      ]}
+    ]
+  };
+
+  const STRAVA_EXAMPLE = [
+    { date:"2026-09-15", name:"Morgenfahrt", distanceKm:13.2, elevationM:105, durationMin:32, avgWatts:145, np:152, avgHr:128 },
+    { date:"2026-09-15", name:"Nachmittagsfahrt", distanceKm:19.9, elevationM:170, durationMin:48, avgWatts:198, np:207, avgHr:141 }
+  ];
+
+  /* ============ Utils ============ */
+  function addDays(date,n){ const d=new Date(date); d.setDate(d.getDate()+n); return d; }
+  function fmtDateShort(d){ return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}); }
+  function fmtDateFull(d){ return d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}); }
+  function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+  function todayMidnight(){ const t=new Date(); t.setHours(0,0,0,0); return t; }
+  function hexToRgba(hex,a){ const h=hex.replace('#',''); const r=parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), bl=parseInt(h.substring(4,6),16); return 'rgba('+r+','+g+','+bl+','+a+')'; }
+  function parseISODate(s){ const p=s.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]); }
+  function toISODate(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day; }
+  function uid(){ return 'e'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+  function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function blockStartDate(block){ return parseISODate(block.startDate); }
+  function weekStartDate(block,wIdx){ return addDays(blockStartDate(block), wIdx*7); }
+  function dayDate(block,wIdx,dIdx){ return addDays(weekStartDate(block,wIdx), dIdx); }
+  function blockEndDate(block){ return addDays(weekStartDate(block, block.weeks.length-1), 6); }
+
+  /* ============ Seed block (first-run content) ============ */
+  function b(slot,title,detail,tag,loggable,power){ return {slot,title,detail,tag,loggable:!!loggable,power:power||null}; }
+  function reintroDays(){
+    return [
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker, Z1–Z2','locker',true), b('rueck','Rückfahrt: R Haldenw-Probstr','Sweet Spot 2×10 Min @205–210 W im Anstieg','sweetspot',true,[205,210]) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
+      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Beinpresse/Kniebeuge 4×4–6 @85–90%, Split-Squat, Hüftstrecker','kraft',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Ermeng-Wiggensb-Depsr 1','Sweet Spot 2×12 Min @205–215 W','sweetspot',true,[205,215]) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1 (Ausklang)','locker',true), b('kraft','Krafttraining B','analog A, andere Reihenfolge','kraft',true) ] },
+      { blocks:[ b('lang','Lange Ausfahrt','2–2,5 Std. Z2 (MTB)','lang',true) ] },
+      { rest:'Ruhetag oder lockere Wanderung', blocks:[] }
+    ];
+  }
+  function thresholdDays(){
+    return [
+      { blocks:[ b('hin','Hinfahrt: H Heiligk-Mariab','Threshold 2×8 Min @225–235 W im Anstieg','threshold',true,[225,235]), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Ermeng-Wiggensb-Depsr 2','Sweet Spot 3×10 Min @210–215 W (km 0–15)','sweetspot',true,[210,215]) ] },
+      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Gewicht steigern (RPE 8–9)','kraft',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H Elmatr-Mariab','Threshold 3×6 Min @230–240 W (steilster Abschnitt)','threshold',true,[230,240]), b('rueck','Rückfahrt','locker Z1 (Ausklang)','locker',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1','locker',true), b('kraft','Krafttraining B','Gewicht steigern (RPE 8–9)','kraft',true) ] },
+      { blocks:[ b('lang','R Günzach-Eselfarm (lange Einheit)','2,5–3 Std. Z2, 20–30 Min Z3 im Hauptanstieg (km 2,5–6)','lang',true) ] },
+      { rest:'Ruhetag oder lockere Wanderung', blocks:[] }
+    ];
+  }
+  function week5Days(){
+    return [
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Mariab-Ermeng-Wiggensb','VO2max 5×3 Min @265–280 W im steilen Abschnitt','vo2max',true,[265,280]) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
+      { rest:'frei', blocks:[ b('kraft','Krafttraining','reduziert: 3×5 statt 4×6','kraft',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H Elmatr-Mariab','Threshold 2×10 Min @225–235 W','threshold',true,[225,235]), b('rueck','Rückfahrt','locker Z1','locker',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1 — kein Kraft, Erholung','locker',true) ] },
+      { blocks:[ b('lang','Lange Ausfahrt','2–2,5 Std. Z2 locker (MTB oder R Günzach-Eselfarm ganz locker)','lang',true) ] },
+      { rest:'Ruhetag', blocks:[] }
+    ];
+  }
+  function week6Days(){
+    return [
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Haldenw-Probstr','locker, mit 3×3 Min @230 W zum Wachhalten','taper',true,[230,230]) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1','locker',true) ] },
+      { rest:'frei — kein Kraft (Taper)', blocks:[] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','ganz locker','locker',true), b('rueck','Rückfahrt','ganz locker, kurz','locker',true) ] },
+      { rest:'Ruhetag oder ganz locker', blocks:[] },
+      { blocks:[ b('lang','FTP-Test','20 Min all-out ×0,95 oder Ramp-Test — frisch, ausgeschlafen. H Elmatr-Mariab oder Trainer','test',true) ] },
+      { rest:'Ruhetag', blocks:[] }
+    ];
+  }
+  function buildSeedBlock(){
+    const weeks = [
+      {phaseLabel:'Sweet Spot Basis', phaseColor:'#E7B24F', days: reintroDays()},
+      {phaseLabel:'Sweet Spot Basis', phaseColor:'#E7B24F', days: reintroDays()},
+      {phaseLabel:'Threshold-Aufbau', phaseColor:'#E4713F', days: thresholdDays()},
+      {phaseLabel:'Threshold-Aufbau', phaseColor:'#E4713F', days: thresholdDays()},
+      {phaseLabel:'VO2max-Reiz', phaseColor:'#E14C63', days: week5Days()},
+      {phaseLabel:'Entlasten + Retest', phaseColor:'#6FB4DB', days: week6Days()}
+    ];
+    weeks.forEach((w,wIdx)=>{
+      w.days.forEach((d,dIdx)=>{
+        d.blocks.forEach(bl=>{ bl.id = 'seed-w'+(wIdx+1)+'-'+dIdx+'-'+bl.slot; delete bl.slot; });
+        if(d.rest===undefined) d.rest = null;
+      });
+    });
+    return { id:'block-alpencross-2026', name:'Radtraining', startDate:'2026-09-14', weeks };
+  }
+
+  /* ============ Storage layer (localStorage — standalone/GitHub Pages build) ============ */
+  const NS = 'radtraining:';
+  const store = {
+    async get(key){ const v = localStorage.getItem(NS+key); return v!==null ? {key, value:v} : null; },
+    async set(key, value){ localStorage.setItem(NS+key, value); return {key, value}; },
+    async delete(key){ localStorage.removeItem(NS+key); return {key, deleted:true}; },
+    async list(){ const keys=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k && k.indexOf(NS)===0) keys.push(k.slice(NS.length)); } return {keys}; }
+  };
+  const IDX_KEY = 'blocks-index';
+  const ACTIVE_KEY = 'active-block-id';
+  async function loadBlocksIndex(){ try{ const r=await store.get(IDX_KEY); return r?JSON.parse(r.value):[]; }catch(e){ return []; } }
+  async function saveBlocksIndex(idx){ try{ await store.set(IDX_KEY, JSON.stringify(idx)); }catch(e){ console.error(e); } }
+  async function loadBlockDef(id){ try{ const r=await store.get('block:'+id); return r?JSON.parse(r.value):null; }catch(e){ return null; } }
+  async function saveBlockDef(id,def){ try{ await store.set('block:'+id, JSON.stringify(def)); }catch(e){ console.error(e); } }
+  async function loadBlockLog(id){ try{ const r=await store.get('log:'+id); return r?JSON.parse(r.value):{entries:{}}; }catch(e){ return {entries:{}}; } }
+  async function saveBlockLogNow(id,log){ try{ await store.set('log:'+id, JSON.stringify(log)); }catch(e){ console.error(e); } }
+  async function getActiveBlockIdStorage(){ try{ const r=await store.get(ACTIVE_KEY); return r?r.value:null; }catch(e){ return null; } }
+  async function setActiveBlockIdStorage(id){ try{ await store.set(ACTIVE_KEY, id); }catch(e){} }
+  async function deleteBlockStorage(id){ try{ await store.delete('block:'+id); }catch(e){} try{ await store.delete('log:'+id); }catch(e){} }
+
+  /* ============ Export / Import (full backup) ============ */
+  function downloadJSON(obj, filename){
+    const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  async function exportAllData(){
+    const result = await store.list();
+    const dump = {};
+    for(const k of result.keys){ const r = await store.get(k); if(r) dump[k] = r.value; }
+    const payload = { app:'radtraining', exportedAt:new Date().toISOString(), data:dump };
+    downloadJSON(payload, 'radtraining-backup-'+toISODate(new Date())+'.json');
+  }
+  async function importAllData(file){
+    let text;
+    try{ text = await file.text(); }catch(e){ alert('Datei konnte nicht gelesen werden.'); return; }
+    let parsed;
+    try{ parsed = JSON.parse(text); }catch(e){ alert('Import fehlgeschlagen: ungültiges JSON.'); return; }
+    if(!parsed || !parsed.data || typeof parsed.data!=='object'){ alert('Import fehlgeschlagen: unerwartetes Dateiformat.'); return; }
+    if(!confirm('Import überschreibt alle aktuell in dieser App gespeicherten Daten. Fortfahren?')) return;
+    const existing = await store.list();
+    for(const k of existing.keys){ await store.delete(k); }
+    for(const k of Object.keys(parsed.data)){ await store.set(k, parsed.data[k]); }
+    alert('Import erfolgreich. Die Seite wird neu geladen.');
+    location.reload();
+  }
+
+  async function bootstrap(){
+    let idx = await loadBlocksIndex();
+    if(idx.length===0){
+      const seed = buildSeedBlock();
+      await saveBlockDef(seed.id, seed);
+      await saveBlockLogNow(seed.id, {entries:{}});
+      idx = [{id:seed.id, name:seed.name, startDate:seed.startDate, numWeeks:seed.weeks.length, createdAt:new Date().toISOString()}];
+      await saveBlocksIndex(idx);
+      await setActiveBlockIdStorage(seed.id);
+    }
+    idx = await migrateSeedRename(idx);
+    return idx;
+  }
+
+  // One-time migration: if the seed block already exists in storage under its old
+  // name (from before this rename), patch both the index entry and the block def.
+  async function migrateSeedRename(idx){
+    const SEED_ID = 'block-alpencross-2026';
+    const OLD_NAME = 'Alpencross-Vorbereitung';
+    const NEW_NAME = 'Radtraining';
+    const entry = idx.find(m=>m.id===SEED_ID);
+    if(entry && entry.name===OLD_NAME){
+      entry.name = NEW_NAME;
+      await saveBlocksIndex(idx);
+      const def = await loadBlockDef(SEED_ID);
+      if(def){ def.name = NEW_NAME; await saveBlockDef(SEED_ID, def); }
+    }
+    return idx;
+  }
+
+  /* ============ App state ============ */
+  const TODAY = todayMidnight();
+  let blocksIndex = [];
+  let currentBlock = null;
+  let LOG = {entries:{}};
+  let activeBlockId = null;
+  let selectedWeek = 0;
+  let activeFilter = null;
+  let formTarget = null; // {wIdx,dIdx,mode:'add'} | {wIdx,dIdx,mode:'edit',entryId}
+  let blockSummaryCache = {};
+  let saveLogTimer = null;
+
+  function isDone(id){ return !!(LOG.entries[id] && LOG.entries[id].done); }
+  function entryFor(id){ return LOG.entries[id] || {}; }
+  function saveLogDebounced(){
+    clearTimeout(saveLogTimer);
+    const id = currentBlock.id;
+    saveLogTimer = setTimeout(()=>{ saveBlockLogNow(id, LOG); }, 250);
+  }
+
+  function forEachEntry(cb){
+    currentBlock.weeks.forEach((week,wIdx)=>{
+      week.days.forEach((day,dIdx)=>{
+        day.blocks.forEach(bl=>{ if(bl.loggable) cb(bl, wIdx, dIdx, false); });
+        cb({id:'alt-'+wIdx+'-'+dIdx, tag:'alternative', loggable:true, power:null}, wIdx, dIdx, true);
+      });
+    });
+  }
+
+  function pickDefaultBlockId(idx){
+    for(const meta of idx){
+      const start = parseISODate(meta.startDate);
+      const end = addDays(start, meta.numWeeks*7-1);
+      if(TODAY>=start && TODAY<=end) return meta.id;
+    }
+    return idx.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0].id;
+  }
+  function computeDefaultSelectedWeek(block){
+    const start = blockStartDate(block);
+    for(let i=0;i<block.weeks.length;i++){
+      const wStart = addDays(start,i*7), wEnd = addDays(wStart,6);
+      if(TODAY>=wStart && TODAY<=wEnd) return i;
+    }
+    return TODAY < start ? 0 : block.weeks.length-1;
+  }
+
+  async function switchToBlock(id){
+    currentBlock = await loadBlockDef(id);
+    LOG = await loadBlockLog(id);
+    activeBlockId = id;
+    selectedWeek = computeDefaultSelectedWeek(currentBlock);
+    activeFilter = null;
+    formTarget = null;
+    await setActiveBlockIdStorage(id);
+  }
+
+  /* ============ Hero ============ */
+  function conicTrack(){
+    const n = currentBlock.weeks.length, seg = 360/n;
+    return 'conic-gradient(from -90deg, ' + currentBlock.weeks.map((w,i)=> w.phaseColor+' '+(i*seg)+'deg '+((i+1)*seg)+'deg').join(', ') + ')';
+  }
+  function findTestDate(){
+    let found = null;
+    currentBlock.weeks.forEach((week,wIdx)=>{ week.days.forEach((day,dIdx)=>{ day.blocks.forEach(bl=>{ if(bl.tag==='test' && !found) found = dayDate(currentBlock,wIdx,dIdx); }); }); });
+    return found;
+  }
+  function computeStreak(){
+    const start = blockStartDate(currentBlock), end = blockEndDate(currentBlock);
+    let streak = 0;
+    let cursor = new Date(Math.min(TODAY.getTime(), end.getTime()));
+    while(cursor >= start){
+      const diffDays = Math.round((cursor-start)/86400000);
+      const wIdx = Math.floor(diffDays/7), dIdx = diffDays%7;
+      const day = currentBlock.weeks[wIdx].days[dIdx];
+      const loggable = day.blocks.filter(bl=>bl.loggable);
+      if(loggable.length===0){ cursor = addDays(cursor,-1); continue; }
+      if(loggable.every(bl=>isDone(bl.id))){ streak++; cursor = addDays(cursor,-1); } else break;
+    }
+    return streak;
+  }
+  function renderHero(){
+    const track = conicTrack();
+    document.getElementById('ringTrack').style.background = track;
+    const progressElm = document.getElementById('ringProgress');
+    progressElm.style.background = track;
+    const start = blockStartDate(currentBlock), end = blockEndDate(currentBlock);
+    let timePct;
+    if(TODAY < start) timePct = 0; else if(TODAY > end) timePct = 100; else timePct = Math.round(100*(TODAY-start)/(end-start));
+    const deg = timePct*3.6;
+    const maskStr = 'conic-gradient(from -90deg, #000 0deg '+deg+'deg, transparent '+deg+'deg 360deg)';
+    progressElm.style.maskImage = maskStr; progressElm.style.webkitMaskImage = maskStr;
+    document.getElementById('ringPct').textContent = timePct+'%';
+
+    const testDate = findTestDate();
+    const target = testDate || end;
+    let daysLabel;
+    if(TODAY < start) daysLabel = Math.round((start-TODAY)/86400000)+' T. bis Start';
+    else if(TODAY <= target) daysLabel = Math.round((target-TODAY)/86400000)+' T. bis '+(testDate?'Test':'Blockende');
+    else daysLabel = testDate ? 'Test erfolgt' : 'Block abgeschlossen';
+    document.getElementById('ringDays').textContent = daysLabel;
+
+    let planned=0, done=0;
+    forEachEntry((bl)=>{ if(bl.tag!=='alternative'){ planned++; if(isDone(bl.id)) done++; } });
+    const pct = planned? Math.round(100*done/planned):0;
+    const streak = computeStreak();
+    document.getElementById('fieldGrid').innerHTML = [
+      {v:pct+'%', l:'Adherence', s:done+' / '+planned+' Einheiten'},
+      {v:streak, l:'Serie (Tage)', s:'lückenlos erfüllt'},
+      {v:done, l:'Erledigt', s:'seit Blockstart'}
+    ].map(f=>'<div class="field"><div class="v">'+f.v+'</div><div class="l">'+f.l+'</div><div class="s">'+f.s+'</div></div>').join('');
+
+    let msg;
+    if(TODAY < start) msg = 'Der Block ist vorbereitet — '+planned+' Einheiten warten, sobald es losgeht.';
+    else if(pct>=90) msg = 'Sehr konstant — die Basis steht.';
+    else if(pct>=70) msg = 'Guter Rhythmus. Die nächste Einheit zählt mehr als die Serie an sich.';
+    else if(pct>0) msg = 'Ein paar Lücken sind normal — wichtig ist die nächste geloggte Einheit, nicht die perfekte Woche.';
+    else msg = 'Noch nichts geloggt für diesen Block.';
+    document.getElementById('heroMsg').textContent = msg;
+
+    const week = currentBlock.weeks[Math.min(Math.max(selectedWeek,0),currentBlock.weeks.length-1)];
+    document.getElementById('phaseChip').innerHTML = '<span class="dot" style="background:'+week.phaseColor+'"></span>Woche '+(selectedWeek+1)+' · '+escapeHtml(week.phaseLabel);
+    document.getElementById('blockEyebrow').textContent = currentBlock.name;
+  }
+
+  /* ============ Heatmap ============ */
+  function renderHeatmap(){
+    const cols = document.getElementById('heatCols');
+    cols.innerHTML = currentBlock.weeks.map((w,wIdx)=>{
+      const cells = w.days.map((d,dIdx)=>{
+        const date = dayDate(currentBlock,wIdx,dIdx);
+        const loggable = d.blocks.filter(bl=>bl.loggable);
+        if(date > TODAY) return '<div class="heat-cell future" data-week="'+wIdx+'" title="'+fmtDateFull(date)+' — kommt noch"></div>';
+        if(loggable.length===0) return '<div class="heat-cell rest" data-week="'+wIdx+'" title="'+fmtDateFull(date)+' — Ruhetag"></div>';
+        const done = loggable.filter(bl=>isDone(bl.id)).length;
+        const alpha = 0.14 + 0.76*(done/loggable.length);
+        return '<div class="heat-cell" data-week="'+wIdx+'" style="background:'+hexToRgba(w.phaseColor,alpha)+'" title="'+fmtDateFull(date)+' — '+done+'/'+loggable.length+' erledigt"></div>';
+      }).join('');
+      return '<div class="heat-col"><div class="heat-col-label">W'+(wIdx+1)+'</div>'+cells+'</div>';
+    }).join('');
+    cols.querySelectorAll('.heat-cell').forEach(c=>{
+      c.addEventListener('click', ()=>{ const wk=c.dataset.week; if(wk!==undefined){ selectedWeek=parseInt(wk,10); renderAll(); document.getElementById('weekTabs').scrollIntoView({behavior:'smooth',block:'center'}); } });
+    });
+  }
+
+  /* ============ Skyline ============ */
+  function weekIntensityScore(wIdx){
+    let score = 0;
+    currentBlock.weeks[wIdx].days.forEach(day=>day.blocks.forEach(bl=>{ score += INTENSITY_WEIGHTS[bl.tag]||1; }));
+    return score;
+  }
+  function computePeakHeights(){
+    const scores = currentBlock.weeks.map((w,i)=>weekIntensityScore(i));
+    const min = Math.min(...scores), max = Math.max(...scores);
+    return scores.map(s=> max===min ? 130 : 60+(s-min)/(max-min)*140 );
+  }
+  function pickPeakShape(wIdx){
+    const tags = new Set();
+    currentBlock.weeks[wIdx].days.forEach(day=>day.blocks.forEach(bl=>tags.add(bl.tag)));
+    if(tags.has('vo2max')) return 'jagged';
+    if(tags.has('threshold')) return 'sharp';
+    if(wIdx===currentBlock.weeks.length-1) return 'taper';
+    return 'rolling';
+  }
+  function peakPath(shape){
+    switch(shape){
+      case 'rolling': return 'M0,100 C 20,55 35,40 50,38 C 65,40 80,55 100,100 Z';
+      case 'sharp': return 'M0,100 L 42,20 L 50,10 L 58,20 L 100,100 Z';
+      case 'jagged': return 'M0,100 L 18,55 L 30,68 L 48,8 L 62,42 L 76,25 L 100,100 Z';
+      case 'taper': return 'M0,100 C 25,80 40,72 50,70 C 60,72 78,82 100,100 Z';
+      default: return 'M0,100 L50,20 L100,100 Z';
+    }
+  }
+  function renderSkyline(){
+    const heights = computePeakHeights();
+    const wrap = document.getElementById('skyline');
+    wrap.innerHTML = currentBlock.weeks.map((w,wIdx)=>{
+      const isToday = TODAY >= weekStartDate(currentBlock,wIdx) && TODAY <= addDays(weekStartDate(currentBlock,wIdx),6);
+      const isSel = wIdx===selectedWeek;
+      const h = heights[wIdx];
+      return '<button class="peak-wrap'+(isToday?' is-today':'')+(isSel?' selected':'')+'" data-week="'+wIdx+'">'+
+        '<span class="peak-mark">Du bist hier</span>'+
+        '<span class="peak-svg-holder" style="height:'+h+'px"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="height:'+h+'px"><path d="'+peakPath(pickPeakShape(wIdx))+'" fill="'+w.phaseColor+'" opacity="'+(isSel?'1':'0.72')+'"/></svg></span>'+
+        '<span class="peak-label"><span class="wk">Wo '+(wIdx+1)+'</span><span class="ph">'+escapeHtml(w.phaseLabel)+'</span></span>'+
+      '</button>';
+    }).join('');
+    wrap.querySelectorAll('.peak-wrap').forEach(elm=>{ elm.addEventListener('click', ()=>{ selectedWeek=parseInt(elm.dataset.week,10); renderAll(); }); });
+
+    const seenPhases = {};
+    const legendItems = [];
+    currentBlock.weeks.forEach(w=>{ if(!seenPhases[w.phaseLabel]){ seenPhases[w.phaseLabel]=true; legendItems.push(w); } });
+    document.getElementById('skylineLegend').innerHTML = legendItems.map(w=>'<div class="leg-item"><span class="leg-dot" style="background:'+w.phaseColor+'"></span>'+escapeHtml(w.phaseLabel)+'</div>').join('');
+  }
+
+  /* ============ Filter chips ============ */
+  function renderFilterChips(){
+    const row = document.getElementById('filterRow');
+    const chips = ['<button class="filter-chip'+(activeFilter===null?' active':'')+'" data-tag="">Alle</button>'].concat(
+      FILTER_TAGS.map(tag=>{ const meta=TAG_META[tag]; return '<button class="filter-chip'+(activeFilter===tag?' active':'')+'" data-tag="'+tag+'" style="color:'+meta.color+'"><span class="dot" style="background:'+meta.color+'"></span>'+meta.label+'</button>'; })
+    );
+    row.innerHTML = chips.join('') + '<span class="filter-hint">wirkt auf Wochenplan &amp; Log</span>';
+    row.querySelectorAll('.filter-chip').forEach(c=>{ c.addEventListener('click', ()=>{ activeFilter = c.dataset.tag || null; renderAll(); }); });
+  }
+
+  /* ============ Today ============ */
+  function renderToday(){
+    const card = document.getElementById('todayCard');
+    const start = blockStartDate(currentBlock), end = blockEndDate(currentBlock);
+    if(TODAY < start){ card.innerHTML = '<div class="kicker">Vorschau</div><h3>Block startet am '+fmtDateFull(start)+'</h3><div class="today-empty">Bis dahin: Vorschau auf Woche 1 unten, oder schon jetzt durch den Plan browsen.</div>'; return; }
+    if(TODAY > end){ card.innerHTML = '<div class="kicker">Block abgeschlossen</div><h3>Nächsten Block anlegen?</h3><div class="today-empty">Oben über "Blockverwaltung" einen neuen Block starten.</div>'; return; }
+    const diffDays = Math.round((TODAY-start)/86400000);
+    const wIdx = Math.floor(diffDays/7), dIdx = diffDays%7;
+    const day = currentBlock.weeks[wIdx].days[dIdx];
+    let html = '<div class="kicker">'+fmtDateFull(TODAY)+' · Woche '+(wIdx+1)+' · '+escapeHtml(currentBlock.weeks[wIdx].phaseLabel)+'</div><h3>Heute anstehend</h3>';
+    if(day.blocks.length===0){ html += '<div class="today-empty">'+(day.rest?escapeHtml(day.rest):'Ruhetag')+'</div>'; }
+    else { html += '<div class="today-blocks">'+day.blocks.map(bl=>{ const done=isDone(bl.id); return '<div class="mini-block">'+(done?'✓ ':'')+'<b>'+escapeHtml(bl.title)+'</b> — '+escapeHtml(bl.detail)+'</div>'; }).join('')+'</div>'; }
+    card.innerHTML = html;
+  }
+
+  /* ============ Week tabs ============ */
+  function renderWeekTabs(){
+    const tabs = document.getElementById('weekTabs');
+    tabs.innerHTML = currentBlock.weeks.map((w,wIdx)=>'<button class="week-tab'+(wIdx===selectedWeek?' active':'')+'" data-week="'+wIdx+'">Woche '+(wIdx+1)+'</button>').join('');
+    tabs.querySelectorAll('.week-tab').forEach(elm=>{ elm.addEventListener('click', ()=>{ selectedWeek=parseInt(elm.dataset.week,10); renderAll(); }); });
+    const w = currentBlock.weeks[selectedWeek];
+    document.getElementById('weekRange').textContent = fmtDateShort(weekStartDate(currentBlock,selectedWeek))+' – '+fmtDateShort(addDays(weekStartDate(currentBlock,selectedWeek),6))+' · '+w.phaseLabel;
+  }
+
+  /* ============ Entry rendering (planned + alternative) ============ */
+  function blockHTML(bl,wIdx,dIdx){
+    const done = isDone(bl.id);
+    const e = entryFor(bl.id);
+    const dimmed = activeFilter && bl.tag!==activeFilter;
+    const isAlt = !!bl.isAlternative;
+    const isKraft = bl.tag==='kraft';
+    const editBtn = isAlt ? '' : ' <button class="entry-edit-btn" data-editw="'+wIdx+'" data-editd="'+dIdx+'" data-editid="'+bl.id+'" title="Bearbeiten">✎</button>';
+    const titleLine = isAlt
+      ? '<div class="btitle"><span>Alternative Fahrt</span></div>'
+      : '<div class="btitle"><span>'+escapeHtml(bl.title)+'</span>'+editBtn+'</div><div class="bdetail">'+escapeHtml(bl.detail)+'</div>';
+    const descField = isAlt
+      ? '<div class="fl full"><span>Was hast du gemacht?</span><input type="text" data-k="description" value="'+escapeHtml(e.description||'')+'" placeholder="z.B. Waldlauf statt Rad, Reifenpanne"></div>'
+      : '';
+    const cyclingFields =
+      '<div class="fl"><span>Ø Watt</span><input type="number" data-k="power" value="'+(e.power!=null?e.power:'')+'" placeholder="'+(bl.power?bl.power[0]+'–'+bl.power[1]:'—')+'"></div>'+
+      '<div class="fl"><span>NP</span><input type="number" data-k="np" value="'+(e.np!=null?e.np:'')+'"></div>'+
+      '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>'+
+      '<div class="fl"><span>km</span><input type="number" step="0.1" data-k="distanceKm" value="'+(e.distanceKm!=null?e.distanceKm:'')+'"></div>'+
+      '<div class="fl"><span>Hm</span><input type="number" data-k="elevationM" value="'+(e.elevationM!=null?e.elevationM:'')+'"></div>'+
+      '<div class="fl"><span>RPE (1–10)</span><input type="number" min="1" max="10" data-k="rpe" value="'+(e.rpe!=null?e.rpe:'')+'"></div>';
+    const kraftFields =
+      '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>'+
+      '<div class="fl"><span>RPE (1–10)</span><input type="number" min="1" max="10" data-k="rpe" value="'+(e.rpe!=null?e.rpe:'')+'"></div>';
+    const viText = (e.power && e.np) ? 'VI '+(e.np/e.power).toFixed(2) : '';
+
+    return '<div class="block tag-'+bl.tag+(done?' is-done':'')+(dimmed?' dimmed':'')+'" data-id="'+bl.id+'">'+
+      titleLine+
+      '<div class="done-row"><input type="checkbox" id="chk-'+bl.id+'" '+(done?'checked':'')+'><label for="chk-'+bl.id+'">'+(isAlt?'eingetragen':'erledigt')+'</label></div>'+
+      '<div class="log-fields'+(done?' open':'')+'" data-fields="'+bl.id+'">'+
+        descField + (isKraft?kraftFields:cyclingFields) +
+        '<div class="fl full"><span>Notiz</span><textarea data-k="notes" placeholder="Beobachtung, Wetter...">'+escapeHtml(e.notes||'')+'</textarea></div>'+
+        '<div class="vi-note">'+viText+'</div>'+
+        '<button class="clear-btn" data-clear="'+bl.id+'">Eintrag zurücksetzen</button>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function entryFormHTML(wIdx,dIdx,existing){
+    const tagOptions = Object.keys(TAG_META).filter(t=>t!=='alternative').map(t=>'<option value="'+t+'"'+(existing&&existing.tag===t?' selected':'')+'>'+TAG_META[t].label+'</option>').join('');
+    return '<div class="entry-form" data-w="'+wIdx+'" data-d="'+dIdx+'" data-mode="'+(existing?'edit':'add')+'"'+(existing?' data-eid="'+existing.id+'"':'')+'>'+
+      '<input type="text" class="ef-title" placeholder="Titel, z.B. Hinfahrt: H-kurz" value="'+(existing?escapeHtml(existing.title):'')+'">'+
+      '<input type="text" class="ef-detail" placeholder="Detail, z.B. locker Z2" value="'+(existing?escapeHtml(existing.detail||''):'')+'">'+
+      '<div class="ef-row"><select class="ef-tag">'+tagOptions+'</select><label class="ef-loggable"><input type="checkbox" class="ef-loggable-chk" '+(!existing||existing.loggable?'checked':'')+'> loggbar</label></div>'+
+      '<div class="ef-row"><input type="number" class="ef-pmin" placeholder="Ziel min W" value="'+(existing&&existing.power?existing.power[0]:'')+'"><input type="number" class="ef-pmax" placeholder="Ziel max W" value="'+(existing&&existing.power?existing.power[1]:'')+'"></div>'+
+      '<div class="ef-actions"><button class="ef-save">'+(existing?'Speichern':'Hinzufügen')+'</button>'+(existing?'<button class="ef-delete">Löschen</button>':'')+'<button class="ef-cancel">Abbrechen</button></div>'+
+    '</div>';
+  }
+
+  function renderDayGrid(){
+    const grid = document.getElementById('dayGrid');
+    const wIdx = selectedWeek;
+    const week = currentBlock.weeks[wIdx];
+    grid.innerHTML = week.days.map((d,dIdx)=>{
+      const date = dayDate(currentBlock,wIdx,dIdx);
+      const isToday = sameDay(date, TODAY);
+      let inner = d.blocks.map(bl=>blockHTML(bl,wIdx,dIdx)).join('');
+      if(d.blocks.length===0 && d.rest){ inner = '<div class="rest-note">'+escapeHtml(d.rest)+'</div>'; }
+      else if(d.rest){ inner = '<div class="rest-note">'+escapeHtml(d.rest)+'</div>'+inner; }
+      const altEntry = {id:'alt-'+wIdx+'-'+dIdx, title:'Alternative Fahrt', detail:'', tag:'alternative', loggable:true, power:null, isAlternative:true};
+      inner += blockHTML(altEntry, wIdx, dIdx);
+      if(formTarget && formTarget.wIdx===wIdx && formTarget.dIdx===dIdx && formTarget.mode==='edit'){
+        const entry = d.blocks.find(x=>x.id===formTarget.entryId);
+        if(entry) inner += entryFormHTML(wIdx,dIdx,entry);
+      }
+      if(formTarget && formTarget.wIdx===wIdx && formTarget.dIdx===dIdx && formTarget.mode==='add'){
+        inner += entryFormHTML(wIdx,dIdx,null);
+      } else {
+        inner += '<button class="add-entry-btn" data-vaddw="'+wIdx+'" data-vaddd="'+dIdx+'">+ Eintrag</button>';
+      }
+      return '<div class="day-card'+(isToday?' is-today':'')+'"><div class="day-head"><span class="d">'+DAY_LABELS[dIdx]+'</span><span class="dt mono">'+fmtDateShort(date)+'</span></div>'+inner+'</div>';
+    }).join('');
+
+    grid.querySelectorAll('input[type=checkbox][id^="chk-"]').forEach(chk=>{
+      chk.addEventListener('change', ()=>{
+        const id = chk.id.replace('chk-','');
+        LOG.entries[id] = LOG.entries[id] || {};
+        LOG.entries[id].done = chk.checked;
+        if(chk.checked && !LOG.entries[id].loggedAt) LOG.entries[id].loggedAt = new Date().toISOString();
+        saveLogDebounced(); renderAll();
+      });
+    });
+    grid.querySelectorAll('.log-fields input, .log-fields textarea').forEach(inp=>{
+      inp.addEventListener('input', ()=>{
+        const id = inp.closest('.log-fields').dataset.fields;
+        LOG.entries[id] = LOG.entries[id] || {};
+        const k = inp.dataset.k;
+        const isText = (k==='notes' || k==='description');
+        LOG.entries[id][k] = isText ? inp.value : (inp.value===''?null:parseFloat(inp.value));
+        saveLogDebounced();
+        const wrap = inp.closest('.log-fields');
+        const viEl = wrap.querySelector('.vi-note');
+        if(viEl){ const entry=LOG.entries[id]; viEl.textContent = (entry.power && entry.np) ? 'VI '+(entry.np/entry.power).toFixed(2) : ''; }
+      });
+    });
+    grid.querySelectorAll('[data-clear]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ delete LOG.entries[btn.dataset.clear]; saveLogDebounced(); renderAll(); });
+    });
+    grid.querySelectorAll('.entry-edit-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ formTarget = {wIdx:parseInt(btn.dataset.editw,10), dIdx:parseInt(btn.dataset.editd,10), mode:'edit', entryId:btn.dataset.editid}; renderAll(); });
+    });
+    grid.querySelectorAll('.add-entry-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ formTarget = {wIdx:parseInt(btn.dataset.vaddw,10), dIdx:parseInt(btn.dataset.vaddd,10), mode:'add'}; renderAll(); });
+    });
+    grid.querySelectorAll('.entry-form').forEach(form=>{
+      const fWIdx = parseInt(form.dataset.w,10), fDIdx = parseInt(form.dataset.d,10);
+      form.querySelector('.ef-cancel').addEventListener('click', ()=>{ formTarget=null; renderAll(); });
+      form.querySelector('.ef-save').addEventListener('click', async ()=>{
+        const title = form.querySelector('.ef-title').value.trim();
+        if(!title){ alert('Bitte einen Titel angeben.'); return; }
+        const detail = form.querySelector('.ef-detail').value.trim();
+        const tag = form.querySelector('.ef-tag').value;
+        const loggable = form.querySelector('.ef-loggable-chk').checked;
+        const pminRaw = form.querySelector('.ef-pmin').value, pmaxRaw = form.querySelector('.ef-pmax').value;
+        const power = (pminRaw!=='' && pmaxRaw!=='') ? [parseFloat(pminRaw), parseFloat(pmaxRaw)] : null;
+        const day = currentBlock.weeks[fWIdx].days[fDIdx];
+        if(form.dataset.mode==='add'){ day.blocks.push({id:uid(), title, detail, tag, loggable, power}); }
+        else { const entry = day.blocks.find(x=>x.id===form.dataset.eid); if(entry){ entry.title=title; entry.detail=detail; entry.tag=tag; entry.loggable=loggable; entry.power=power; } }
+        await saveBlockDef(currentBlock.id, currentBlock);
+        formTarget = null; renderAll();
+      });
+      const delBtn = form.querySelector('.ef-delete');
+      if(delBtn) delBtn.addEventListener('click', async ()=>{
+        if(!confirm('Diesen Eintrag wirklich löschen? Zugehörige Logdaten gehen verloren.')) return;
+        const day = currentBlock.weeks[fWIdx].days[fDIdx];
+        day.blocks = day.blocks.filter(x=>x.id!==form.dataset.eid);
+        delete LOG.entries[form.dataset.eid];
+        await saveBlockDef(currentBlock.id, currentBlock);
+        saveLogDebounced();
+        formTarget = null; renderAll();
+      });
+    });
+  }
+
+  /* ============ Charts ============ */
+  let charts = {};
+  function destroyCharts(){ Object.values(charts).forEach(c=>{ if(c) c.destroy(); }); charts={}; }
+  function setupChartDefaults(){ Chart.defaults.font.family = "'IBM Plex Mono', monospace"; Chart.defaults.font.size = 11; Chart.defaults.color = '#93A99B'; }
+  const gridColor = 'rgba(233,240,230,0.06)';
+
+  function renderSparklines(){
+    const wrap = document.getElementById('sparkGrid');
+    const tags = ['sweetspot','threshold','vo2max'];
+    wrap.innerHTML = tags.map(t=>'<div class="chart-card spark-card"><h4>'+TAG_META[t].label+'<span class="latest" id="spark-latest-'+t+'"></span></h4><div class="band-note" id="spark-band-'+t+'"></div><div id="spark-wrap-'+t+'"></div></div>').join('');
+    tags.forEach(tag=>{
+      const sessions = [];
+      forEachEntry((bl,wIdx,dIdx)=>{ if(bl.tag===tag && bl.power && isDone(bl.id) && entryFor(bl.id).power!=null) sessions.push({bl,date:dayDate(currentBlock,wIdx,dIdx)}); });
+      sessions.sort((a,b)=>a.date-b.date);
+      const bandEl = document.getElementById('spark-band-'+tag), latestEl = document.getElementById('spark-latest-'+tag);
+      let targetSample = null;
+      forEachEntry(bl=>{ if(!targetSample && bl.tag===tag && bl.power) targetSample = bl; });
+      bandEl.textContent = targetSample ? 'Ziel: '+targetSample.power[0]+'–'+targetSample.power[1]+' W' : '';
+      if(sessions.length===0){ document.getElementById('spark-wrap-'+tag).innerHTML = '<div class="chart-empty">Noch keine Werte geloggt.</div>'; latestEl.textContent=''; return; }
+      document.getElementById('spark-wrap-'+tag).innerHTML = '<canvas id="spark-canvas-'+tag+'"></canvas>';
+      const labels = sessions.map(s=>fmtDateShort(s.date));
+      const actual = sessions.map(s=>entryFor(s.bl.id).power);
+      const maxArr = sessions.map(s=>s.bl.power[1]);
+      const minArr = sessions.map(s=>s.bl.power[0]);
+      const last = actual[actual.length-1];
+      const mid = (sessions[sessions.length-1].bl.power[0]+sessions[sessions.length-1].bl.power[1])/2;
+      latestEl.textContent = last+' W ('+(last>=mid?'+':'')+Math.round(last-mid)+')';
+      charts['spark-'+tag] = new Chart(document.getElementById('spark-canvas-'+tag), {
+        type:'line',
+        data:{ labels, datasets:[
+          {data:maxArr, borderWidth:0, pointRadius:0, fill:false},
+          {data:minArr, borderWidth:0, pointRadius:0, backgroundColor:hexToRgba(TAG_META[tag].color,0.16), fill:'-1'},
+          {data:actual, borderColor:TAG_META[tag].color, backgroundColor:TAG_META[tag].color, pointRadius:3, pointHoverRadius:4, borderWidth:2, fill:false, tension:.25}
+        ]},
+        options:{ responsive:true, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(c)=>c.dataset.data[c.dataIndex]+' W'}}}, scales:{x:{display:false},y:{display:false}} }
+      });
+    });
+  }
+
+  function renderComparisonCharts(){
+    const n = currentBlock.weeks.length;
+    const planned = new Array(n).fill(0), done = new Array(n).fill(0);
+    const kraftPlanned = new Array(n).fill(0), kraftDone = new Array(n).fill(0);
+    const weekKm = new Array(n).fill(0), weekHm = new Array(n).fill(0);
+    forEachEntry((bl,wIdx)=>{
+      if(bl.tag!=='alternative'){ planned[wIdx]++; if(isDone(bl.id)) done[wIdx]++; if(bl.tag==='kraft'){ kraftPlanned[wIdx]++; if(isDone(bl.id)) kraftDone[wIdx]++; } }
+      if(isDone(bl.id)){ const e=entryFor(bl.id); if(e.distanceKm) weekKm[wIdx]+=e.distanceKm; if(e.elevationM) weekHm[wIdx]+=e.elevationM; }
+    });
+    const labels = currentBlock.weeks.map((w,i)=>'Wo '+(i+1));
+    charts.adherence = new Chart(document.getElementById('adherenceChart'), {
+      type:'bar', data:{ labels, datasets:[ {label:'geplant', data:planned, backgroundColor:'rgba(233,240,230,0.12)'}, {label:'erledigt', data:done, backgroundColor:'#E7B24F'} ] },
+      options:{ responsive:true, plugins:{legend:{position:'bottom'}}, scales:{ y:{beginAtZero:true, ticks:{stepSize:1}, grid:{color:gridColor}}, x:{grid:{display:false}} } }
+    });
+    charts.volume = new Chart(document.getElementById('volumeChart'), {
+      type:'bar', data:{ labels, datasets:[ {label:'km', data:weekKm, backgroundColor:'#6FB4DB', yAxisID:'y'}, {label:'Hm', data:weekHm, backgroundColor:'#E7B24F', yAxisID:'y1'} ] },
+      options:{ responsive:true, plugins:{legend:{position:'bottom'}}, scales:{ y:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridColor}}, y1:{type:'linear', position:'right', beginAtZero:true, grid:{display:false}}, x:{grid:{display:false}} } }
+    });
+    charts.strength = new Chart(document.getElementById('strengthChart'), {
+      type:'bar', data:{ labels, datasets:[ {label:'geplant', data:kraftPlanned, backgroundColor:'rgba(233,240,230,0.12)'}, {label:'erledigt', data:kraftDone, backgroundColor:'#8FA98F'} ] },
+      options:{ responsive:true, plugins:{legend:{position:'bottom'}}, scales:{ y:{beginAtZero:true, ticks:{stepSize:1}, grid:{color:gridColor}}, x:{grid:{display:false}} } }
+    });
+  }
+
+  function renderDetailCharts(){
+    let structured = [];
+    forEachEntry((bl,wIdx,dIdx)=>{ if(bl.power && isDone(bl.id) && entryFor(bl.id).power!=null){ if(!activeFilter || bl.tag===activeFilter) structured.push({bl,date:dayDate(currentBlock,wIdx,dIdx)}); } });
+    structured.sort((a,b)=>a.date-b.date);
+    if(structured.length===0){ document.getElementById('deviationWrap').innerHTML = '<div class="chart-empty">Noch keine Watt-Werte zu strukturierten Einheiten geloggt.</div>'; }
+    else {
+      document.getElementById('deviationWrap').innerHTML = '<canvas id="deviationChart"></canvas>';
+      const labels = structured.map(s=>fmtDateShort(s.date)+' '+TAG_META[s.bl.tag].label);
+      const deviations = structured.map(s=>{ const p=entryFor(s.bl.id).power; const mid=(s.bl.power[0]+s.bl.power[1])/2; return +(p-mid).toFixed(1); });
+      const colors = structured.map(s=>{ const p=entryFor(s.bl.id).power; if(p<s.bl.power[0]) return '#6FB4DB'; if(p>s.bl.power[1]) return '#E4713F'; return '#5FCB93'; });
+      charts.deviation = new Chart(document.getElementById('deviationChart'), {
+        type:'bar', data:{ labels, datasets:[{label:'Abw. von Zielmitte (W)', data:deviations, backgroundColor:colors}] },
+        options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ticks:{maxRotation:60,minRotation:40}, grid:{display:false}}, y:{grid:{color:gridColor}} } }
+      });
+    }
+    const radarTags = ['sweetspot','threshold','vo2max','kraft'];
+    const plannedByTag = {}, doneByTag = {};
+    radarTags.forEach(t=>{ plannedByTag[t]=0; doneByTag[t]=0; });
+    forEachEntry(bl=>{ if(radarTags.includes(bl.tag)){ plannedByTag[bl.tag]++; if(isDone(bl.id)) doneByTag[bl.tag]++; } });
+    const radarData = radarTags.map(t=> plannedByTag[t]? Math.round(100*doneByTag[t]/plannedByTag[t]):0);
+    charts.radar = new Chart(document.getElementById('radarChart'), {
+      type:'radar', data:{ labels: radarTags.map(t=>TAG_META[t].label), datasets:[{label:'Adherence %', data:radarData, backgroundColor:'rgba(231,178,79,0.18)', borderColor:'#E7B24F', pointBackgroundColor:'#E7B24F'}] },
+      options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ r:{min:0,max:100, ticks:{stepSize:25, backdropColor:'transparent', color:'#6C8377'}, grid:{color:gridColor}, angleLines:{color:gridColor}, pointLabels:{color:'#93A99B', font:{size:11}}} } }
+    });
+  }
+
+  function renderCharts(){ destroyCharts(); setupChartDefaults(); renderSparklines(); renderComparisonCharts(); renderDetailCharts(); }
+
+  /* ============ History ============ */
+  function renderHistory(){
+    const rows = [];
+    forEachEntry((bl,wIdx,dIdx)=>{
+      if(isDone(bl.id)){
+        const e = entryFor(bl.id);
+        const title = bl.tag==='alternative' ? ('Alternative: '+(e.description||'(keine Beschreibung)')) : bl.title;
+        rows.push({date:dayDate(currentBlock,wIdx,dIdx), week:wIdx+1, title, tag:bl.tag, power:e.power, np:e.np, durationMin:e.durationMin, distanceKm:e.distanceKm, elevationM:e.elevationM, rpe:e.rpe, notes:e.notes});
+      }
+    });
+    let filtered = activeFilter ? rows.filter(r=>r.tag===activeFilter) : rows;
+    filtered.sort((a,b)=>b.date-a.date);
+    const toolbar = document.getElementById('historyToolbar');
+    if(activeFilter){
+      toolbar.innerHTML = 'Gefiltert nach: <b style="color:'+TAG_META[activeFilter].color+'">'+TAG_META[activeFilter].label+'</b> ('+filtered.length+' von '+rows.length+') <button id="clearFilterBtn">Filter zurücksetzen</button>';
+      document.getElementById('clearFilterBtn').addEventListener('click', ()=>{ activeFilter=null; renderAll(); });
+    } else { toolbar.innerHTML = rows.length+' Einheiten geloggt'; }
+    const wrap = document.getElementById('historyWrap');
+    if(filtered.length===0){ wrap.innerHTML = '<div class="chart-empty">Noch keine passenden Einheiten geloggt.</div>'; return; }
+    wrap.innerHTML = '<table class="history-table"><thead><tr><th>Datum</th><th>Wo</th><th>Einheit</th><th>Watt</th><th>NP</th><th>Dauer</th><th>km</th><th>Hm</th><th>RPE</th><th>Notiz</th></tr></thead><tbody>'+
+      filtered.map(r=>{ const meta=TAG_META[r.tag]||{color:'#999',label:r.tag};
+        return '<tr><td class="mono">'+fmtDateShort(r.date)+'</td><td>'+r.week+'</td>'+
+          '<td>'+escapeHtml(r.title)+' <span class="tag-chip" style="background:'+meta.color+'">'+meta.label+'</span></td>'+
+          '<td class="mono">'+(r.power!=null?r.power:'—')+'</td>'+
+          '<td class="mono">'+(r.np!=null?r.np:'—')+'</td>'+
+          '<td class="mono">'+(r.durationMin!=null?r.durationMin:'—')+'</td>'+
+          '<td class="mono">'+(r.distanceKm!=null?r.distanceKm:'—')+'</td>'+
+          '<td class="mono">'+(r.elevationM!=null?r.elevationM:'—')+'</td>'+
+          '<td class="mono">'+(r.rpe!=null?r.rpe:'—')+'</td>'+
+          '<td>'+escapeHtml(r.notes||'')+'</td></tr>'; }).join('')+
+      '</tbody></table>';
+  }
+
+  /* ============ Cross-block overview ============ */
+  function computeBlockStats(block, log){
+    let planned=0, done=0, totalKm=0, totalHm=0;
+    const ids = [];
+    block.weeks.forEach((week,wIdx)=>{
+      week.days.forEach((day,dIdx)=>{
+        day.blocks.forEach(bl=>{ if(bl.loggable){ planned++; if(log.entries[bl.id]&&log.entries[bl.id].done) done++; ids.push(bl.id); } });
+        ids.push('alt-'+wIdx+'-'+dIdx);
+      });
+    });
+    ids.forEach(id=>{ const e=log.entries[id]; if(e&&e.done){ if(e.distanceKm) totalKm+=e.distanceKm; if(e.elevationM) totalHm+=e.elevationM; } });
+    return { adherencePct: planned?Math.round(100*done/planned):0, totalKm, totalHm };
+  }
+  async function renderBlockOverview(){
+    const wrap = document.getElementById('blockOverviewWrap');
+    const rows = [];
+    for(const meta of blocksIndex){
+      let stats;
+      if(meta.id===currentBlock.id) stats = computeBlockStats(currentBlock, LOG);
+      else if(blockSummaryCache[meta.id]) stats = blockSummaryCache[meta.id];
+      else { const def = await loadBlockDef(meta.id); const log = await loadBlockLog(meta.id); stats = def ? computeBlockStats(def,log) : {adherencePct:0,totalKm:0,totalHm:0}; blockSummaryCache[meta.id]=stats; }
+      rows.push({meta,stats});
+    }
+    rows.sort((a,b)=>parseISODate(b.meta.startDate)-parseISODate(a.meta.startDate));
+    wrap.innerHTML = '<table class="history-table"><thead><tr><th>Block</th><th>Zeitraum</th><th>Adherence</th><th>km</th><th>Hm</th><th></th></tr></thead><tbody>'+
+      rows.map(r=>{
+        const start = parseISODate(r.meta.startDate), end = addDays(start, r.meta.numWeeks*7-1);
+        const isActive = r.meta.id===activeBlockId;
+        return '<tr><td>'+escapeHtml(r.meta.name)+(isActive?' <span class="tag-chip" style="background:#E7B24F">aktiv</span>':'')+'</td>'+
+          '<td class="mono">'+fmtDateShort(start)+' – '+fmtDateShort(end)+'</td>'+
+          '<td class="mono">'+r.stats.adherencePct+'%</td>'+
+          '<td class="mono">'+Math.round(r.stats.totalKm)+'</td>'+
+          '<td class="mono">'+Math.round(r.stats.totalHm)+'</td>'+
+          '<td>'+(isActive?'':'<button class="switch-block-btn" data-blockid="'+r.meta.id+'">öffnen</button>')+'</td></tr>';
+      }).join('')+'</tbody></table>';
+    wrap.querySelectorAll('.switch-block-btn').forEach(btn=>{ btn.addEventListener('click', async ()=>{ await switchToBlock(btn.dataset.blockid); renderAll(); }); });
+  }
+
+  /* ============ Block manager UI ============ */
+  function renderBlockSelect(){
+    const sel = document.getElementById('blockSelect');
+    sel.innerHTML = blocksIndex.slice().sort((a,b)=>parseISODate(b.startDate)-parseISODate(a.startDate))
+      .map(m=>'<option value="'+m.id+'"'+(m.id===activeBlockId?' selected':'')+'>'+escapeHtml(m.name)+' ('+fmtDateShort(parseISODate(m.startDate))+')</option>').join('');
+  }
+  function validateBlockJSON(p){
+    if(!p || typeof p!=='object') return 'JSON muss ein Objekt sein.';
+    if(!p.name || typeof p.name!=='string') return 'Feld "name" fehlt oder ist kein Text.';
+    if(!p.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(p.startDate)) return 'Feld "startDate" fehlt oder hat falsches Format (YYYY-MM-DD).';
+    if(!Array.isArray(p.weeks) || p.weeks.length===0) return 'Feld "weeks" muss ein nicht-leeres Array sein.';
+    for(let i=0;i<p.weeks.length;i++){
+      const w = p.weeks[i];
+      if(!w || !w.phaseLabel || !w.phaseColor) return 'Woche '+(i+1)+': "phaseLabel" oder "phaseColor" fehlt.';
+      if(!Array.isArray(w.days) || w.days.length!==7) return 'Woche '+(i+1)+' hat '+((w.days&&w.days.length)||0)+' statt 7 Tage.';
+      for(let j=0;j<7;j++){
+        const d = w.days[j];
+        if(!d || !Array.isArray(d.blocks)) return 'Woche '+(i+1)+', Tag '+(j+1)+': "blocks" fehlt oder ist kein Array.';
+        for(const bl of d.blocks){
+          if(!bl.title) return 'Woche '+(i+1)+', Tag '+(j+1)+': ein Eintrag hat keinen "title".';
+          if(!bl.tag || !TAG_META[bl.tag] || bl.tag==='alternative') return 'Woche '+(i+1)+', Tag '+(j+1)+': ungültiger tag "'+bl.tag+'".';
+        }
+      }
+    }
+    return null;
+  }
+
+  /* ============ Strava import ============ */
+  function findDayForDate(isoStr){
+    const date = parseISODate(isoStr);
+    const start = blockStartDate(currentBlock), end = blockEndDate(currentBlock);
+    if(date < start || date > end) return null;
+    const diffDays = Math.round((date-start)/86400000);
+    return { wIdx: Math.floor(diffDays/7), dIdx: diffDays%7 };
+  }
+  function validateStravaJSON(arr){
+    if(!Array.isArray(arr)) return 'Muss ein Array sein.';
+    for(let i=0;i<arr.length;i++){
+      const a = arr[i];
+      if(!a || !a.date || !/^\d{4}-\d{2}-\d{2}$/.test(a.date)) return 'Eintrag '+(i+1)+': "date" fehlt oder hat falsches Format (YYYY-MM-DD).';
+    }
+    return null;
+  }
+  let pendingStravaActivities = [];
+  function renderStravaMatches(activities){
+    pendingStravaActivities = activities;
+    const wrap = document.getElementById('stravaMatchWrap');
+    const rows = activities.map((act,idx)=>{
+      const loc = findDayForDate(act.date);
+      const summary = (act.distanceKm!=null?act.distanceKm+' km':'')+(act.elevationM!=null?' · '+act.elevationM+' Hm':'')+(act.avgWatts!=null?' · '+act.avgWatts+' W':'');
+      if(!loc){
+        return '<tr><td class="mono">'+act.date+'</td><td>'+escapeHtml(act.name||'Aktivität')+'<div class="strava-summary">'+summary+'</div></td><td colspan="1" style="color:var(--crimson)">außerhalb des aktiven Blocks</td></tr>';
+      }
+      const day = currentBlock.weeks[loc.wIdx].days[loc.dIdx];
+      const candidates = day.blocks.filter(bl=>bl.loggable);
+      const options = candidates.map(bl=>'<option value="'+bl.id+'">'+escapeHtml(bl.title)+(isDone(bl.id)?' (bereits erledigt)':'')+'</option>').join('');
+      return '<tr data-idx="'+idx+'"><td class="mono">'+fmtDateShort(dayDate(currentBlock,loc.wIdx,loc.dIdx))+'</td>'+
+        '<td>'+escapeHtml(act.name||'Aktivität')+'<div class="strava-summary">'+summary+'</div></td>'+
+        '<td><select class="strava-target-select" data-idx="'+idx+'">'+options+'<option value="alt-'+loc.wIdx+'-'+loc.dIdx+'">Alternative Fahrt</option><option value="">Ignorieren</option></select></td></tr>';
+    }).join('');
+    wrap.innerHTML = '<table class="strava-match-table"><thead><tr><th>Datum</th><th>Aktivität</th><th>Ziel-Eintrag</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+      '<button id="stravaApplyBtn">Übernehmen</button>';
+    document.getElementById('stravaApplyBtn').addEventListener('click', applyStravaMatches);
+  }
+  function applyStravaMatches(){
+    const selects = document.querySelectorAll('.strava-target-select');
+    let count = 0;
+    selects.forEach(sel=>{
+      const targetId = sel.value;
+      if(!targetId) return;
+      const act = pendingStravaActivities[parseInt(sel.dataset.idx,10)];
+      LOG.entries[targetId] = LOG.entries[targetId] || {};
+      const e = LOG.entries[targetId];
+      e.done = true;
+      if(!e.loggedAt) e.loggedAt = new Date().toISOString();
+      if(act.avgWatts!=null) e.power = act.avgWatts;
+      if(act.np!=null) e.np = act.np;
+      if(act.durationMin!=null) e.durationMin = act.durationMin;
+      if(act.distanceKm!=null) e.distanceKm = act.distanceKm;
+      if(act.elevationM!=null) e.elevationM = act.elevationM;
+      const stravaNote = 'Strava: '+(act.name||'')+(act.avgHr!=null?', Ø HF '+act.avgHr:'');
+      e.notes = e.notes ? e.notes+' | '+stravaNote : stravaNote;
+      if(targetId.indexOf('alt-')===0 && !e.description) e.description = act.name || '';
+      count++;
+    });
+    saveLogDebounced();
+    document.getElementById('stravaMatchWrap').innerHTML = '';
+    document.getElementById('stravaJsonInput').value = '';
+    renderAll();
+    if(count>0) alert(count+' Aktivität(en) übernommen.');
+  }
+
+  function attachStaticListeners(){
+    document.getElementById('blockSelect').addEventListener('change', async (e)=>{ await switchToBlock(e.target.value); renderAll(); });
+    document.getElementById('newBlockToggle').addEventListener('click', ()=>{
+      const p = document.getElementById('newBlockPanel');
+      const opening = p.style.display==='none';
+      p.style.display = opening ? 'block' : 'none';
+      if(opening){ const startInput = document.getElementById('nbStart'); if(!startInput.value) startInput.value = toISODate(addDays(blockEndDate(currentBlock),1)); }
+    });
+    document.querySelectorAll('.nb-tab').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        document.querySelectorAll('.nb-tab').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('nbEmpty').style.display = tab.dataset.tab==='empty' ? 'flex' : 'none';
+        document.getElementById('nbJson').style.display = tab.dataset.tab==='json' ? 'flex' : 'none';
+      });
+    });
+    document.getElementById('nbCreateEmpty').addEventListener('click', async ()=>{
+      const name = document.getElementById('nbName').value.trim();
+      const startRaw = document.getElementById('nbStart').value;
+      const numWeeks = parseInt(document.getElementById('nbWeeks').value,10);
+      if(!name || !startRaw || !numWeeks || numWeeks<1){ alert('Bitte Name, Startdatum und Wochenzahl angeben.'); return; }
+      const palette = ['#E7B24F','#E4713F','#E14C63','#6FB4DB'];
+      const weeks = [];
+      for(let i=0;i<numWeeks;i++){ weeks.push({phaseLabel:'Woche '+(i+1), phaseColor:palette[i%palette.length], days:Array.from({length:7},()=>({rest:null,blocks:[]}))}); }
+      const id = 'block-'+Date.now().toString(36);
+      const block = {id, name, startDate:startRaw, weeks};
+      await saveBlockDef(id, block);
+      blocksIndex.push({id, name, startDate:startRaw, numWeeks, createdAt:new Date().toISOString()});
+      await saveBlocksIndex(blocksIndex);
+      delete blockSummaryCache[id];
+      await switchToBlock(id);
+      document.getElementById('newBlockPanel').style.display='none';
+      document.getElementById('nbName').value=''; document.getElementById('nbStart').value=''; document.getElementById('nbWeeks').value='6';
+      renderAll();
+    });
+    document.getElementById('nbShowExample').addEventListener('click', ()=>{ document.getElementById('nbJsonInput').value = JSON.stringify(EXAMPLE_BLOCK, null, 2); });
+    document.getElementById('stravaShowExample').addEventListener('click', ()=>{ document.getElementById('stravaJsonInput').value = JSON.stringify(STRAVA_EXAMPLE, null, 2); });
+    document.getElementById('stravaParseBtn').addEventListener('click', ()=>{
+      const errEl = document.getElementById('stravaJsonError'); errEl.textContent='';
+      let arr;
+      try{ arr = JSON.parse(document.getElementById('stravaJsonInput').value); }
+      catch(e){ errEl.textContent = 'JSON ist nicht gültig: '+e.message; return; }
+      const err = validateStravaJSON(arr);
+      if(err){ errEl.textContent = err; return; }
+      renderStravaMatches(arr);
+    });
+    document.getElementById('nbImportJson').addEventListener('click', async ()=>{
+      const errEl = document.getElementById('nbJsonError'); errEl.textContent='';
+      let parsed;
+      try{ parsed = JSON.parse(document.getElementById('nbJsonInput').value); }
+      catch(e){ errEl.textContent = 'JSON ist nicht gültig: '+e.message; return; }
+      const err = validateBlockJSON(parsed);
+      if(err){ errEl.textContent = err; return; }
+      parsed.weeks.forEach(week=>{
+        week.days.forEach(day=>{
+          day.blocks = day.blocks.map(bl=>({ id: bl.id || uid(), title:bl.title, detail:bl.detail||'', tag:bl.tag, loggable: bl.loggable!==false, power: bl.power||null }));
+          if(day.rest===undefined) day.rest = null;
+        });
+      });
+      const id = 'block-'+Date.now().toString(36);
+      const block = {id, name:parsed.name, startDate:parsed.startDate, weeks:parsed.weeks};
+      await saveBlockDef(id, block);
+      blocksIndex.push({id, name:block.name, startDate:block.startDate, numWeeks:block.weeks.length, createdAt:new Date().toISOString()});
+      await saveBlocksIndex(blocksIndex);
+      delete blockSummaryCache[id];
+      await switchToBlock(id);
+      document.getElementById('newBlockPanel').style.display='none';
+      document.getElementById('nbJsonInput').value='';
+      renderAll();
+    });
+    document.getElementById('deleteBlockBtn').addEventListener('click', async ()=>{
+      if(blocksIndex.length<=1){ alert('Der letzte verbleibende Block kann nicht gelöscht werden.'); return; }
+      if(!confirm('Block "'+currentBlock.name+'" wirklich löschen? Alle Logdaten dieses Blocks gehen verloren.')) return;
+      const idToDelete = currentBlock.id;
+      await deleteBlockStorage(idToDelete);
+      blocksIndex = blocksIndex.filter(m=>m.id!==idToDelete);
+      await saveBlocksIndex(blocksIndex);
+      delete blockSummaryCache[idToDelete];
+      await switchToBlock(pickDefaultBlockId(blocksIndex));
+      renderAll();
+    });
+    document.getElementById('exportDataBtn').addEventListener('click', exportAllData);
+    document.getElementById('importDataBtn').addEventListener('click', ()=>{ document.getElementById('importFileInput').click(); });
+    document.getElementById('importFileInput').addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(file) importAllData(file);
+      e.target.value = '';
+    });
+  }
+
+  /* ============ Main render ============ */
+  function renderAll(){
+    renderBlockSelect();
+    renderHero();
+    renderHeatmap();
+    renderSkyline();
+    renderFilterChips();
+    renderToday();
+    renderWeekTabs();
+    renderDayGrid();
+    renderCharts();
+    renderHistory();
+    renderBlockOverview();
+  }
+
+  async function initApp(){
+    blocksIndex = await bootstrap();
+    let aId = await getActiveBlockIdStorage();
+    if(!aId || !blocksIndex.find(m=>m.id===aId)) aId = pickDefaultBlockId(blocksIndex);
+    await switchToBlock(aId);
+    attachStaticListeners();
+    renderAll();
+  }
+  initApp();
+})();
+</script>
+</body>
+</html>
