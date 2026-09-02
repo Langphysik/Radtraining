@@ -466,9 +466,9 @@
     return [
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker, Z1–Z2','locker',true), b('rueck','Rückfahrt: R Haldenw-Probstr','Sweet Spot 2×10 Min @205–210 W im Anstieg','sweetspot',true,[205,210]) ] },
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
-      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Beinpresse/Kniebeuge 4×4–6 @85–90%, Split-Squat, Hüftstrecker','kraft',true) ] },
+      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Einbein-Sprünge zuerst: Step-ups mit leichtem Absprung 2–3×5–8/Bein (niedrige Amplitude, Satz beenden sobald Sprunghöhe nachlässt) + Beinpresse/Kniebeuge 4×4–6 @85–90%, Split-Squat, Hüftstrecker','kraft',true) ] },
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Ermeng-Wiggensb-Depsr 1','Sweet Spot 2×12 Min @205–215 W','sweetspot',true,[205,215]) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1 (Ausklang)','locker',true), b('kraft','Krafttraining B','analog A, andere Reihenfolge','kraft',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1 (Ausklang)','locker',true), b('kraft','Krafttraining B','analog A (Sprünge zuerst), andere Reihenfolge','kraft',true) ] },
       { blocks:[ b('lang','Lange Ausfahrt','2–2,5 Std. Z2 (MTB)','lang',true) ] },
       { rest:'Ruhetag oder lockere Wanderung', blocks:[] }
     ];
@@ -477,9 +477,9 @@
     return [
       { blocks:[ b('hin','Hinfahrt: H Heiligk-Mariab','Threshold 2×8 Min @225–235 W im Anstieg','threshold',true,[225,235]), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Ermeng-Wiggensb-Depsr 2','Sweet Spot 3×10 Min @210–215 W (km 0–15)','sweetspot',true,[210,215]) ] },
-      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Gewicht steigern (RPE 8–9)','kraft',true) ] },
+      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Einbein-Sprünge zuerst: CMJ einbeinig 2–3×5–8/Bein (mittlere Amplitude) + Kraft wie Woche 1–2, Gewicht steigern (RPE 8–9)','kraft',true) ] },
       { blocks:[ b('hin','Hinfahrt: H Elmatr-Mariab','Threshold 3×6 Min @230–240 W (steilster Abschnitt)','threshold',true,[230,240]), b('rueck','Rückfahrt','locker Z1 (Ausklang)','locker',true) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1','locker',true), b('kraft','Krafttraining B','Gewicht steigern (RPE 8–9)','kraft',true) ] },
+      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1','locker',true), b('kraft','Krafttraining B','Einbein-Sprünge zuerst: CMJ einbeinig 2–3×5–8/Bein (mittlere Amplitude) + Kraft analog A, Gewicht steigern (RPE 8–9)','kraft',true) ] },
       { blocks:[ b('lang','R Günzach-Eselfarm (lange Einheit)','2,5–3 Std. Z2, 20–30 Min Z3 im Hauptanstieg (km 2,5–6)','lang',true) ] },
       { rest:'Ruhetag oder lockere Wanderung', blocks:[] }
     ];
@@ -488,7 +488,7 @@
     return [
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Mariab-Ermeng-Wiggensb','VO2max 5×3 Min @265–280 W im steilen Abschnitt','vo2max',true,[265,280]) ] },
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
-      { rest:'frei', blocks:[ b('kraft','Krafttraining','reduziert: 3×5 statt 4×6','kraft',true) ] },
+      { rest:'frei', blocks:[ b('kraft','Krafttraining','Einbein-Sprünge zuerst: Box Jumps oder CMJ, volle Intensität, reduziertes Volumen 1–2×5/Bein (hohe Amplitude) + Kraft reduziert: 3×5 statt 4×6','kraft',true) ] },
       { blocks:[ b('hin','Hinfahrt: H Elmatr-Mariab','Threshold 2×10 Min @225–235 W','threshold',true,[225,235]), b('rueck','Rückfahrt','locker Z1','locker',true) ] },
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1 — kein Kraft, Erholung','locker',true) ] },
       { blocks:[ b('lang','Lange Ausfahrt','2–2,5 Std. Z2 locker (MTB oder R Günzach-Eselfarm ganz locker)','lang',true) ] },
@@ -499,7 +499,7 @@
     return [
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Haldenw-Probstr','locker, mit 3×3 Min @230 W zum Wachhalten','taper',true,[230,230]) ] },
       { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1','locker',true) ] },
-      { rest:'frei — kein Kraft (Taper)', blocks:[] },
+      { rest:'frei — kein Kraft, keine Sprünge (Taper vor Retest)', blocks:[] },
       { blocks:[ b('hin','Hinfahrt: H-kurz','ganz locker','locker',true), b('rueck','Rückfahrt','ganz locker, kurz','locker',true) ] },
       { rest:'Ruhetag oder ganz locker', blocks:[] },
       { blocks:[ b('lang','FTP-Test','20 Min all-out ×0,95 oder Ramp-Test — frisch, ausgeschlafen. H Elmatr-Mariab oder Trainer','test',true) ] },
