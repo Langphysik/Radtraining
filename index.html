@@ -585,6 +585,7 @@
       await setActiveBlockIdStorage(seed.id);
     }
     idx = await migrateSeedRename(idx);
+    idx = await migratePlyometrie(idx);
     return idx;
   }
 
@@ -601,6 +602,39 @@
       const def = await loadBlockDef(SEED_ID);
       if(def){ def.name = NEW_NAME; await saveBlockDef(SEED_ID, def); }
     }
+    return idx;
+  }
+
+  // One-time migration: lift the stored seed block's Krafttraining detail texts to
+  // the current source (adds the dynamic single-leg plyometrics progression). Idem-
+  // potent — kraft blocks that already mention "Einbein-Sprünge" are left alone, so
+  // any manual edits the user made to those blocks are preserved.
+  async function migratePlyometrie(idx){
+    const SEED_ID = 'block-alpencross-2026';
+    if(!idx.find(m=>m.id===SEED_ID)) return idx;
+    const def = await loadBlockDef(SEED_ID);
+    if(!def || !Array.isArray(def.weeks)) return idx;
+    const fresh = buildSeedBlock();
+    let changed = false;
+    def.weeks.forEach((wk,wIdx)=>{
+      const fw = fresh.weeks[wIdx];
+      if(!fw) return;
+      (wk.days||[]).forEach((day,dIdx)=>{
+        const fd = fw.days[dIdx];
+        if(!fd) return;
+        (day.blocks||[]).forEach(bl=>{
+          if(bl.tag!=='kraft' || /Einbein-Sprünge/.test(bl.detail||'')) return;
+          const fb = (fd.blocks||[]).find(x=>x.tag==='kraft' && x.title===bl.title)
+                  || (fd.blocks||[]).find(x=>x.tag==='kraft');
+          if(fb && fb.detail!==bl.detail){ bl.detail = fb.detail; changed = true; }
+        });
+        if(typeof day.rest==='string' && /kein Kraft/.test(day.rest)
+           && !/keine Sprünge/.test(day.rest) && typeof fd.rest==='string'){
+          day.rest = fd.rest; changed = true;
+        }
+      });
+    });
+    if(changed) await saveBlockDef(SEED_ID, def);
     return idx;
   }
 
