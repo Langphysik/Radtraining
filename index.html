@@ -880,15 +880,10 @@
       ? '<div class="fl full"><span>Was hast du gemacht?</span><input type="text" data-k="description" value="'+escapeHtml(e.description||'')+'" placeholder="z.B. Waldlauf statt Rad, Reifenpanne"></div>'
       : '';
     const cyclingFields =
-      '<div class="fl"><span>Ø Watt</span><input type="number" data-k="power" value="'+(e.power!=null?e.power:'')+'" placeholder="'+(bl.power?bl.power[0]+'–'+bl.power[1]:'—')+'"></div>'+
-      '<div class="fl"><span>NP</span><input type="number" data-k="np" value="'+(e.np!=null?e.np:'')+'"></div>'+
       '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>'+
-      '<div class="fl"><span>km</span><input type="number" step="0.1" data-k="distanceKm" value="'+(e.distanceKm!=null?e.distanceKm:'')+'"></div>'+
-      '<div class="fl"><span>Hm</span><input type="number" data-k="elevationM" value="'+(e.elevationM!=null?e.elevationM:'')+'"></div>'+
-      '<div class="fl"><span>RPE (1–10)</span><input type="number" min="1" max="10" data-k="rpe" value="'+(e.rpe!=null?e.rpe:'')+'"></div>';
+      '<div class="fl"><span>km</span><input type="number" step="0.1" data-k="distanceKm" value="'+(e.distanceKm!=null?e.distanceKm:'')+'"></div>';
     const kraftFields =
-      '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>'+
-      '<div class="fl"><span>RPE (1–10)</span><input type="number" min="1" max="10" data-k="rpe" value="'+(e.rpe!=null?e.rpe:'')+'"></div>';
+      '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>';
     const viText = (e.power && e.np) ? 'VI '+(e.np/e.power).toFixed(2) : '';
 
     return '<div class="block tag-'+bl.tag+(done?' is-done':'')+(dimmed?' dimmed':'')+'" data-id="'+bl.id+'">'+
