@@ -64,6 +64,15 @@
   h2.section-title::after{content:"";flex:1;height:1px;background:var(--line-soft);}
   h2.section-title .tier{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;background:var(--panel-2);border:1px solid var(--line);padding:2px 8px;border-radius:10px;color:var(--ink-dim);text-transform:none;}
 
+  /* ---------- Collapsible sections ---------- */
+  details.collapsible{margin:0;}
+  details.collapsible > summary.section-title{cursor:pointer;list-style:none;user-select:none;}
+  details.collapsible > summary.section-title::-webkit-details-marker{display:none;}
+  details.collapsible > summary.section-title::marker{content:"";}
+  details.collapsible > summary.section-title .caret{font-size:10px;color:var(--ink-dim);transition:transform .15s;flex-shrink:0;}
+  details.collapsible[open] > summary.section-title .caret{transform:rotate(90deg);}
+  details.collapsible > .collapsible-body{margin-top:12px;}
+
   /* ---------- Block manager ---------- */
   .block-manager{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);}
   .block-switch-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
@@ -165,14 +174,16 @@
   .week-tab.active{background:var(--gold);border-color:var(--gold);color:#1B1305;}
   .week-range{font-size:12px;color:var(--ink-dim);margin:-6px 0 16px;font-family:'IBM Plex Mono',monospace;}
 
-  /* ---------- Day grid ---------- */
-  .day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:9px;}
-  @media(max-width:880px){.day-grid{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));}}
-  .day-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 10px;display:flex;flex-direction:column;gap:7px;min-height:120px;}
-  .day-card.is-today{border-color:var(--gold);box-shadow:0 0 0 2px rgba(231,178,79,.28);}
-  .day-head{display:flex;justify-content:space-between;align-items:baseline;}
-  .day-head .d{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:var(--ink);}
-  .day-head .dt{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-dim);}
+  /* ---------- Week groups (Wichtig / Bonus) ---------- */
+  .week-note{font-size:11.5px;color:var(--ink-dim);font-style:italic;padding:2px 2px 12px;}
+  .week-groups{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+  @media(max-width:760px){.week-groups{grid-template-columns:1fr;}}
+  .week-group{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:9px;}
+  .wg-head{display:flex;align-items:baseline;gap:8px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:var(--ink);}
+  .week-group.is-bonus .wg-head{color:var(--ink-soft);}
+  .wg-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:400;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.05em;}
+  .wg-list{display:flex;flex-direction:column;gap:8px;}
+  .wg-empty{font-size:12px;color:var(--ink-dim);font-style:italic;padding:2px;}
   .block{border-radius:8px;padding:7px 8px;font-size:12px;background:var(--panel-2);border:1px solid var(--line-soft);transition:opacity .15s, filter .15s;}
   .block.dimmed{opacity:.32;filter:saturate(.4);}
   .block.tag-sweetspot{border-left:3px solid var(--gold);}
@@ -186,7 +197,8 @@
   .block.tag-alternative{border-left:3px dashed var(--alt);}
   .block .btitle{font-weight:600;margin-bottom:2px;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:6px;}
   .block .bdetail{color:var(--ink-soft);font-size:11.3px;}
-  .rest-note{font-size:11.5px;color:var(--ink-dim);font-style:italic;padding:4px 2px;}
+  .block .timing-hint{color:var(--ink-dim);font-size:10.5px;margin-top:3px;font-style:italic;}
+  .block .done-date{color:var(--good);font-size:10.5px;margin-top:3px;font-family:'IBM Plex Mono',monospace;}
   .entry-edit-btn{background:none;border:none;color:var(--ink-dim);cursor:pointer;font-size:11px;padding:0;flex-shrink:0;}
   .entry-edit-btn:hover{color:var(--gold);}
 
@@ -255,54 +267,58 @@
   </header>
 
   <section>
-    <h2 class="section-title">Blockverwaltung</h2>
-    <div class="block-manager">
-      <div class="block-switch-row">
-        <select id="blockSelect"></select>
-        <button id="newBlockToggle">+ Neuer Block</button>
-        <button id="deleteBlockBtn">Block löschen</button>
-      </div>
-      <div class="block-switch-row" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-soft)">
-        <button id="exportDataBtn">⬇ Backup exportieren</button>
-        <button id="importDataBtn">⬆ Backup importieren</button>
-        <input type="file" id="importFileInput" accept="application/json" style="display:none">
-        <span class="nb-hint" style="align-self:center">sichert alle Blöcke &amp; Logs als Datei</span>
-      </div>
-      <div class="new-block-panel" id="newBlockPanel" style="display:none">
-        <div class="nb-tabs">
-          <button class="nb-tab active" data-tab="empty">Leerer Block</button>
-          <button class="nb-tab" data-tab="json">JSON importieren</button>
+    <details class="collapsible">
+      <summary class="section-title"><span class="caret">▸</span>Blockverwaltung</summary>
+      <div class="collapsible-body block-manager">
+        <div class="block-switch-row">
+          <select id="blockSelect"></select>
+          <button id="newBlockToggle">+ Neuer Block</button>
+          <button id="deleteBlockBtn">Block löschen</button>
         </div>
-        <div class="nb-pane" id="nbEmpty">
-          <input type="text" id="nbName" placeholder="Name, z.B. Grundlagenblock Winter">
-          <input type="date" id="nbStart">
-          <input type="number" id="nbWeeks" min="1" max="20" value="6" placeholder="Anzahl Wochen">
-          <div class="nb-hint">Legt einen leeren Block an — Einträge fügst du danach direkt bei den Tagen hinzu ("+ Eintrag").</div>
-          <button id="nbCreateEmpty">Anlegen</button>
+        <div class="block-switch-row" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-soft)">
+          <button id="exportDataBtn">⬇ Backup exportieren</button>
+          <button id="importDataBtn">⬆ Backup importieren</button>
+          <input type="file" id="importFileInput" accept="application/json" style="display:none">
+          <span class="nb-hint" style="align-self:center">sichert alle Blöcke &amp; Logs als Datei</span>
         </div>
-        <div class="nb-pane" id="nbJson" style="display:none">
-          <div class="nb-hint">Schema: {name, startDate "YYYY-MM-DD", weeks:[{phaseLabel, phaseColor, days:[7× {rest, blocks:[{title, detail, tag, loggable, power:[min,max]}]}]}]}. Gültige tags: sweetspot, threshold, vo2max, taper, kraft, lang, locker, test.</div>
-          <button id="nbShowExample" class="nb-secondary">Beispiel einfügen</button>
-          <textarea id="nbJsonInput" rows="10" placeholder="JSON hier einfügen..."></textarea>
-          <div class="nb-error" id="nbJsonError"></div>
-          <button id="nbImportJson">Importieren</button>
+        <div class="new-block-panel" id="newBlockPanel" style="display:none">
+          <div class="nb-tabs">
+            <button class="nb-tab active" data-tab="empty">Leerer Block</button>
+            <button class="nb-tab" data-tab="json">JSON importieren</button>
+          </div>
+          <div class="nb-pane" id="nbEmpty">
+            <input type="text" id="nbName" placeholder="Name, z.B. Grundlagenblock Winter">
+            <input type="date" id="nbStart">
+            <input type="number" id="nbWeeks" min="1" max="20" value="6" placeholder="Anzahl Wochen">
+            <div class="nb-hint">Legt einen leeren Block an — Einträge fügst du danach direkt bei den Tagen hinzu ("+ Eintrag").</div>
+            <button id="nbCreateEmpty">Anlegen</button>
+          </div>
+          <div class="nb-pane" id="nbJson" style="display:none">
+            <div class="nb-hint">Schema: {name, startDate "YYYY-MM-DD", weeks:[{phaseLabel, phaseColor, weekNote?, sessions:[{title, detail, tag, importance:"key"|"bonus", loggable, power:[min,max], timingHint?}]}]}. Gültige tags: sweetspot, threshold, vo2max, taper, kraft, lang, locker, test, alternative. "importance" steuert Wichtig/Bonus (Default: locker/taper→bonus, sonst key). Kein fester Wochentag mehr — beim Abhaken wird das tatsächliche Datum gewählt.</div>
+            <button id="nbShowExample" class="nb-secondary">Beispiel einfügen</button>
+            <textarea id="nbJsonInput" rows="10" placeholder="JSON hier einfügen..."></textarea>
+            <div class="nb-error" id="nbJsonError"></div>
+            <button id="nbImportJson">Importieren</button>
+          </div>
         </div>
       </div>
-    </div>
+    </details>
   </section>
 
   <section>
-    <h2 class="section-title">Strava-Import</h2>
-    <div class="block-manager">
-      <div class="nb-hint">Ich hole deine Fahrten über die Strava-Verbindung im Chat und liefere sie dir als JSON in diesem Format — hier einfügen, dann jeder Aktivität den passenden Plan-Eintrag zuweisen.</div>
-      <div class="nb-pane" style="max-width:600px;margin-top:10px">
-        <button id="stravaShowExample" class="nb-secondary">Beispiel-Format zeigen</button>
-        <textarea id="stravaJsonInput" rows="6" placeholder='[{"date":"2026-09-15","name":"Morgenfahrt","distanceKm":13.2,"elevationM":105,"durationMin":32,"avgWatts":145,"np":152,"avgHr":128}]'></textarea>
-        <div class="nb-error" id="stravaJsonError"></div>
-        <button id="stravaParseBtn">Zuordnen</button>
+    <details class="collapsible">
+      <summary class="section-title"><span class="caret">▸</span>Strava-Import</summary>
+      <div class="collapsible-body block-manager">
+        <div class="nb-hint">Ich hole deine Fahrten über die Strava-Verbindung im Chat und liefere sie dir als JSON in diesem Format — hier einfügen, dann jeder Aktivität den passenden Plan-Eintrag zuweisen.</div>
+        <div class="nb-pane" style="max-width:600px;margin-top:10px">
+          <button id="stravaShowExample" class="nb-secondary">Beispiel-Format zeigen</button>
+          <textarea id="stravaJsonInput" rows="6" placeholder='[{"date":"2026-09-15","name":"Morgenfahrt","distanceKm":13.2,"elevationM":105,"durationMin":32,"avgWatts":145,"np":152,"avgHr":128}]'></textarea>
+          <div class="nb-error" id="stravaJsonError"></div>
+          <button id="stravaParseBtn">Zuordnen</button>
+        </div>
+        <div id="stravaMatchWrap"></div>
       </div>
-      <div id="stravaMatchWrap"></div>
-    </div>
+    </details>
   </section>
 
   <section>
@@ -331,9 +347,8 @@
       </div>
       <div class="heat-legend">
         <span class="grp"><span class="swatch" style="background:transparent;border-style:dashed"></span>zukünftig</span>
-        <span class="grp"><span class="swatch" style="background:rgba(231,178,79,.18)"></span>offen</span>
-        <span class="grp"><span class="swatch" style="background:rgba(231,178,79,.9)"></span>erledigt</span>
-        <span class="grp"><span class="swatch" style="background:transparent"></span>Ruhetag (zählt nicht)</span>
+        <span class="grp"><span class="swatch" style="background:rgba(233,240,230,.05)"></span>nichts geloggt</span>
+        <span class="grp"><span class="swatch" style="background:rgba(231,178,79,.9)"></span>erledigt (Intensität = Anzahl Einheiten)</span>
       </div>
     </div>
   </section>
@@ -360,7 +375,8 @@
     <h2 class="section-title">Wochenplan</h2>
     <div class="week-tabs" id="weekTabs"></div>
     <div class="week-range" id="weekRange"></div>
-    <div class="day-grid" id="dayGrid"></div>
+    <div class="week-note" id="weekNote"></div>
+    <div class="week-groups" id="weekGroups"></div>
   </section>
 
   <section>
@@ -416,24 +432,19 @@
     alternative:{label:'Alternative', color:'#B98FD8'}
   };
   const FILTER_TAGS = ['sweetspot','threshold','vo2max','kraft','lang','locker','alternative'];
-  const DAY_LABELS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
   const INTENSITY_WEIGHTS = {locker:1, sweetspot:2, threshold:3, vo2max:4, taper:1.5, test:3, kraft:1.5, lang:2};
+  const IMPORTANCE_META = { key:{label:'Wichtig'}, bonus:{label:'Bonus'} };
+  function defaultImportance(tag){ return (tag==='locker' || tag==='taper') ? 'bonus' : 'key'; }
 
   const EXAMPLE_BLOCK = {
     name: "Beispiel-Block",
     startDate: "2026-11-02",
     weeks: [
-      { phaseLabel:"Grundlage", phaseColor:"#6FB4DB", days: [
-        { rest:null, blocks:[
-          {title:"Hinfahrt: H-kurz", detail:"locker Z1–Z2", tag:"locker", loggable:true},
-          {title:"Rückfahrt", detail:"Sweet Spot 2×10 Min", tag:"sweetspot", loggable:true, power:[200,210]}
-        ]},
-        { rest:null, blocks:[ {title:"Hinfahrt", detail:"locker", tag:"locker", loggable:true} ] },
-        { rest:"frei", blocks:[ {title:"Krafttraining A", detail:"Beinpresse 4×4–6 @85–90%", tag:"kraft", loggable:true} ] },
-        { rest:null, blocks:[] },
-        { rest:null, blocks:[] },
-        { rest:null, blocks:[ {title:"Lange Ausfahrt", detail:"2 Std. Z2", tag:"lang", loggable:true} ] },
-        { rest:"Ruhetag", blocks:[] }
+      { phaseLabel:"Grundlage", phaseColor:"#6FB4DB", weekNote:"Ruhetag flexibel einlegen, z.B. am Wochenende.", sessions: [
+        {title:"Sweet Spot Intervalle", detail:"2×10 Min @200–210 W", tag:"sweetspot", importance:"key", loggable:true, power:[200,210], timingHint:"früh in der Woche"},
+        {title:"Krafttraining", detail:"Beinpresse 4×4–6 @85–90%", tag:"kraft", importance:"key", loggable:true, timingHint:"nicht am selben Tag wie die Intervalle"},
+        {title:"Lange Ausfahrt", detail:"2 Std. Z2", tag:"lang", importance:"key", loggable:true, timingHint:"am Wochenende"},
+        {title:"Lockere Ausfahrten", detail:"Pendelfahrten Z1–Z2, so oft wie es passt", tag:"locker", importance:"bonus", loggable:true}
       ]}
     ]
   };
@@ -447,7 +458,6 @@
   function addDays(date,n){ const d=new Date(date); d.setDate(d.getDate()+n); return d; }
   function fmtDateShort(d){ return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}); }
   function fmtDateFull(d){ return d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}); }
-  function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
   function todayMidnight(){ const t=new Date(); t.setHours(0,0,0,0); return t; }
   function hexToRgba(hex,a){ const h=hex.replace('#',''); const r=parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), bl=parseInt(h.substring(4,6),16); return 'rgba('+r+','+g+','+bl+','+a+')'; }
   function parseISODate(s){ const p=s.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]); }
@@ -461,65 +471,59 @@
   function blockEndDate(block){ return addDays(weekStartDate(block, block.weeks.length-1), 6); }
 
   /* ============ Seed block (first-run content) ============ */
-  function b(slot,title,detail,tag,loggable,power){ return {slot,title,detail,tag,loggable:!!loggable,power:power||null}; }
-  function reintroDays(){
+  function s(slot,title,detail,tag,opts){
+    opts = opts||{};
+    return { slot, title, detail, tag, loggable:true, importance: opts.importance || defaultImportance(tag),
+      power: opts.power||null, timingHint: opts.timingHint||null };
+  }
+  function reintroSessions(){
     return [
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker, Z1–Z2','locker',true), b('rueck','Rückfahrt: R Haldenw-Probstr','Sweet Spot 2×10 Min @205–210 W im Anstieg','sweetspot',true,[205,210]) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
-      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Einbein-Sprünge zuerst: Step-ups mit leichtem Absprung 2–3×5–8/Bein (niedrige Amplitude, Satz beenden sobald Sprunghöhe nachlässt) + Beinpresse/Kniebeuge 4×4–6 @85–90%, Split-Squat, Hüftstrecker','kraft',true) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Ermeng-Wiggensb-Depsr 1','Sweet Spot 2×12 Min @205–215 W','sweetspot',true,[205,215]) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1 (Ausklang)','locker',true), b('kraft','Krafttraining B','analog A (Sprünge zuerst), andere Reihenfolge','kraft',true) ] },
-      { blocks:[ b('lang','Lange Ausfahrt','2–2,5 Std. Z2 (MTB)','lang',true) ] },
-      { rest:'Ruhetag oder lockere Wanderung', blocks:[] }
+      s('sweetspotA','Sweet Spot Intervalle A','2×10 Min @205–210 W im Anstieg (R Haldenw-Probstr)','sweetspot',{power:[205,210], timingHint:'früh in der Woche'}),
+      s('sweetspotB','Sweet Spot Intervalle B','2×12 Min @205–215 W (R Ermeng-Wiggensb-Depsr 1)','sweetspot',{power:[205,215], timingHint:'Wochenmitte, mind. 1 Tag nach Intervalle A'}),
+      s('kraftA','Krafttraining A','Einbein-Sprünge zuerst: Step-ups mit leichtem Absprung 2–3×5–8/Bein (niedrige Amplitude, Satz beenden sobald Sprunghöhe nachlässt) + Beinpresse/Kniebeuge 4×4–6 @85–90%, Split-Squat, Hüftstrecker','kraft',{timingHint:'2× diese Woche, nicht am selben Tag wie Intervalle'}),
+      s('kraftB','Krafttraining B','analog A (Sprünge zuerst), andere Reihenfolge','kraft',{timingHint:'2. Krafttag, mit Abstand zu A'}),
+      s('lang','Lange Ausfahrt','2–2,5 Std. Z2 (MTB)','lang',{timingHint:'am Wochenende, wenn Zeit ist'}),
+      s('locker','Lockere Ausfahrten','Pendelfahrten Hin-/Rückfahrt, Z1–Z2, so oft wie es passt','locker')
     ];
   }
-  function thresholdDays(){
+  function thresholdSessions(){
     return [
-      { blocks:[ b('hin','Hinfahrt: H Heiligk-Mariab','Threshold 2×8 Min @225–235 W im Anstieg','threshold',true,[225,235]), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Ermeng-Wiggensb-Depsr 2','Sweet Spot 3×10 Min @210–215 W (km 0–15)','sweetspot',true,[210,215]) ] },
-      { rest:'frei', blocks:[ b('kraft','Krafttraining A','Einbein-Sprünge zuerst: CMJ einbeinig 2–3×5–8/Bein (mittlere Amplitude) + Kraft wie Woche 1–2, Gewicht steigern (RPE 8–9)','kraft',true) ] },
-      { blocks:[ b('hin','Hinfahrt: H Elmatr-Mariab','Threshold 3×6 Min @230–240 W (steilster Abschnitt)','threshold',true,[230,240]), b('rueck','Rückfahrt','locker Z1 (Ausklang)','locker',true) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1','locker',true), b('kraft','Krafttraining B','Einbein-Sprünge zuerst: CMJ einbeinig 2–3×5–8/Bein (mittlere Amplitude) + Kraft analog A, Gewicht steigern (RPE 8–9)','kraft',true) ] },
-      { blocks:[ b('lang','R Günzach-Eselfarm (lange Einheit)','2,5–3 Std. Z2, 20–30 Min Z3 im Hauptanstieg (km 2,5–6)','lang',true) ] },
-      { rest:'Ruhetag oder lockere Wanderung', blocks:[] }
+      s('thresholdA','Threshold Intervalle A','2×8 Min @225–235 W im Anstieg (H Heiligk-Mariab)','threshold',{power:[225,235], timingHint:'früh in der Woche'}),
+      s('sweetspot','Sweet Spot Intervalle','3×10 Min @210–215 W, km 0–15 (R Ermeng-Wiggensb-Depsr 2)','sweetspot',{power:[210,215], timingHint:'Wochenmitte'}),
+      s('kraftA','Krafttraining A','Einbein-Sprünge zuerst: CMJ einbeinig 2–3×5–8/Bein (mittlere Amplitude) + Kraft wie Woche 1–2, Gewicht steigern (RPE 8–9)','kraft',{timingHint:'2× diese Woche, nicht am selben Tag wie Intervalle'}),
+      s('thresholdB','Threshold Intervalle B','3×6 Min @230–240 W, steilster Abschnitt (H Elmatr-Mariab)','threshold',{power:[230,240], timingHint:'mit Abstand zu Intervalle A und Kraft'}),
+      s('kraftB','Krafttraining B','Einbein-Sprünge zuerst: CMJ einbeinig 2–3×5–8/Bein (mittlere Amplitude) + Kraft analog A, Gewicht steigern (RPE 8–9)','kraft',{timingHint:'2. Krafttag, mit Abstand zu A'}),
+      s('lang','R Günzach-Eselfarm (lange Einheit)','2,5–3 Std. Z2, 20–30 Min Z3 im Hauptanstieg (km 2,5–6)','lang',{timingHint:'am Wochenende, wenn Zeit ist'}),
+      s('locker','Lockere Ausfahrten','Pendelfahrten Hin-/Rückfahrt, Z1–Z2, so oft wie es passt','locker')
     ];
   }
-  function week5Days(){
+  function week5Sessions(){
     return [
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Mariab-Ermeng-Wiggensb','VO2max 5×3 Min @265–280 W im steilen Abschnitt','vo2max',true,[265,280]) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z2','locker',true) ] },
-      { rest:'frei', blocks:[ b('kraft','Krafttraining','Einbein-Sprünge zuerst: Box Jumps oder CMJ, volle Intensität, reduziertes Volumen 1–2×5/Bein (hohe Amplitude) + Kraft reduziert: 3×5 statt 4×6','kraft',true) ] },
-      { blocks:[ b('hin','Hinfahrt: H Elmatr-Mariab','Threshold 2×10 Min @225–235 W','threshold',true,[225,235]), b('rueck','Rückfahrt','locker Z1','locker',true) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1 — kein Kraft, Erholung','locker',true) ] },
-      { blocks:[ b('lang','Lange Ausfahrt','2–2,5 Std. Z2 locker (MTB oder R Günzach-Eselfarm ganz locker)','lang',true) ] },
-      { rest:'Ruhetag', blocks:[] }
+      s('vo2max','VO2max Intervalle','5×3 Min @265–280 W im steilen Abschnitt (R Mariab-Ermeng-Wiggensb)','vo2max',{power:[265,280], timingHint:'früh in der Woche, ausgeruht'}),
+      s('threshold','Threshold Intervalle','2×10 Min @225–235 W (H Elmatr-Mariab)','threshold',{power:[225,235], timingHint:'Wochenmitte'}),
+      s('kraft','Krafttraining (reduziert)','Einbein-Sprünge zuerst: Box Jumps oder CMJ, volle Intensität, reduziertes Volumen 1–2×5/Bein (hohe Amplitude) + Kraft reduziert: 3×5 statt 4×6','kraft',{timingHint:'1× diese Woche reicht, nicht am Intervalltag'}),
+      s('lang','Lange Ausfahrt','2–2,5 Std. Z2 locker (MTB oder R Günzach-Eselfarm ganz locker)','lang',{timingHint:'am Wochenende'}),
+      s('locker','Lockere Ausfahrten','Pendelfahrten Hin-/Rückfahrt, Z1–Z2 — nach dem VO2max-Reiz eher zurückhaltend','locker')
     ];
   }
-  function week6Days(){
+  function week6Sessions(){
     return [
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt: R Haldenw-Probstr','locker, mit 3×3 Min @230 W zum Wachhalten','taper',true,[230,230]) ] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','locker','locker',true), b('rueck','Rückfahrt','locker Z1','locker',true) ] },
-      { rest:'frei — kein Kraft, keine Sprünge (Taper vor Retest)', blocks:[] },
-      { blocks:[ b('hin','Hinfahrt: H-kurz','ganz locker','locker',true), b('rueck','Rückfahrt','ganz locker, kurz','locker',true) ] },
-      { rest:'Ruhetag oder ganz locker', blocks:[] },
-      { blocks:[ b('lang','FTP-Test','20 Min all-out ×0,95 oder Ramp-Test — frisch, ausgeschlafen. H Elmatr-Mariab oder Trainer','test',true) ] },
-      { rest:'Ruhetag', blocks:[] }
+      s('taper','Taper-Reiz','locker, mit 3×3 Min @230 W zum Wachhalten','taper',{power:[230,230], timingHint:'früh in der Woche'}),
+      s('test','FTP-Test','20 Min all-out ×0,95 oder Ramp-Test — frisch, ausgeschlafen. H Elmatr-Mariab oder Trainer','test',{timingHint:'nach 1–2 ganz lockeren Tagen, Wochenmitte oder später'}),
+      s('locker','Lockere Ausfahrten','ganz locker, kurz','locker')
     ];
   }
   function buildSeedBlock(){
     const weeks = [
-      {phaseLabel:'Sweet Spot Basis', phaseColor:'#E7B24F', days: reintroDays()},
-      {phaseLabel:'Sweet Spot Basis', phaseColor:'#E7B24F', days: reintroDays()},
-      {phaseLabel:'Threshold-Aufbau', phaseColor:'#E4713F', days: thresholdDays()},
-      {phaseLabel:'Threshold-Aufbau', phaseColor:'#E4713F', days: thresholdDays()},
-      {phaseLabel:'VO2max-Reiz', phaseColor:'#E14C63', days: week5Days()},
-      {phaseLabel:'Entlasten + Retest', phaseColor:'#6FB4DB', days: week6Days()}
+      {phaseLabel:'Sweet Spot Basis', phaseColor:'#E7B24F', weekNote:'Ruhetag flexibel einlegen, z.B. am Wochenende.', sessions: reintroSessions()},
+      {phaseLabel:'Sweet Spot Basis', phaseColor:'#E7B24F', weekNote:'Ruhetag flexibel einlegen, z.B. am Wochenende.', sessions: reintroSessions()},
+      {phaseLabel:'Threshold-Aufbau', phaseColor:'#E4713F', weekNote:'Ruhetag flexibel einlegen, z.B. am Wochenende.', sessions: thresholdSessions()},
+      {phaseLabel:'Threshold-Aufbau', phaseColor:'#E4713F', weekNote:'Ruhetag flexibel einlegen, z.B. am Wochenende.', sessions: thresholdSessions()},
+      {phaseLabel:'VO2max-Reiz', phaseColor:'#E14C63', weekNote:'Nach dem Reiz Erholung einplanen, kein zusätzliches Kraft.', sessions: week5Sessions()},
+      {phaseLabel:'Entlasten + Retest', phaseColor:'#6FB4DB', weekNote:'Taper-Woche: kein Kraft, keine Sprünge vor dem Retest.', sessions: week6Sessions()}
     ];
     weeks.forEach((w,wIdx)=>{
-      w.days.forEach((d,dIdx)=>{
-        d.blocks.forEach(bl=>{ bl.id = 'seed-w'+(wIdx+1)+'-'+dIdx+'-'+bl.slot; delete bl.slot; });
-        if(d.rest===undefined) d.rest = null;
-      });
+      w.sessions.forEach(bl=>{ bl.id = 'seed-w'+(wIdx+1)+'-'+bl.slot; delete bl.slot; });
     });
     return { id:'block-alpencross-2026', name:'Radtraining', startDate:'2026-09-14', weeks };
   }
@@ -585,8 +589,59 @@
       await setActiveBlockIdStorage(seed.id);
     }
     idx = await migrateSeedRename(idx);
-    idx = await migratePlyometrie(idx);
+    await migrateAllBlocksToSessions(idx);
+    idx = await migrateSeedContentSync(idx);
     return idx;
+  }
+
+  // One-time migration: converts the old weeks[].days[7]{rest,blocks[]} shape
+  // (each entry rigidly bound to a fixed weekday) to weeks[].sessions[]
+  // (entries bound only to a week, logged against the date the user actually
+  // did them). Runs across every stored block. Backfills LOG.entries[id].date
+  // for already-completed entries from their old fixed weekday, and preserves
+  // any historical "Alternative Fahrt" logs as ad-hoc bonus sessions, so no
+  // logged history is lost.
+  async function migrateAllBlocksToSessions(idx){
+    for(const meta of idx){
+      const def = await loadBlockDef(meta.id);
+      if(!def || !Array.isArray(def.weeks)) continue;
+      const needsMigration = def.weeks.some(w=>Array.isArray(w.days));
+      if(!needsMigration) continue;
+      const log = await loadBlockLog(meta.id);
+      const start = parseISODate(def.startDate);
+      def.weeks.forEach((week,wIdx)=>{
+        if(!Array.isArray(week.days)){ if(!week.sessions) week.sessions=[]; return; }
+        const sessions = [];
+        const notes = [];
+        week.days.forEach((day,dIdx)=>{
+          const dateISO = toISODate(addDays(start, wIdx*7+dIdx));
+          (day.blocks||[]).forEach(bl=>{
+            sessions.push({
+              id: bl.id, title: bl.title, detail: bl.detail||'', tag: bl.tag,
+              importance: bl.importance || defaultImportance(bl.tag),
+              loggable: bl.loggable!==false, power: bl.power||null, timingHint: bl.timingHint||null
+            });
+            const e = log.entries[bl.id];
+            if(e && e.done && !e.date) e.date = dateISO;
+          });
+          const altId = 'alt-'+wIdx+'-'+dIdx;
+          const altEntry = log.entries[altId];
+          if(altEntry && altEntry.done){
+            sessions.push({
+              id: altId, title: altEntry.description ? ('Alternative: '+altEntry.description) : 'Alternative Fahrt',
+              detail:'', tag:'alternative', importance:'bonus', loggable:true, power:null, timingHint:null
+            });
+            if(!altEntry.date) altEntry.date = dateISO;
+          }
+          if(typeof day.rest==='string' && day.rest.trim() && notes.indexOf(day.rest.trim())===-1) notes.push(day.rest.trim());
+        });
+        week.sessions = sessions;
+        if(notes.length && !week.weekNote) week.weekNote = notes.join(' · ');
+        delete week.days;
+      });
+      await saveBlockDef(meta.id, def);
+      await saveBlockLogNow(meta.id, log);
+    }
   }
 
   // One-time migration: if the seed block already exists in storage under its old
@@ -605,11 +660,11 @@
     return idx;
   }
 
-  // One-time migration: lift the stored seed block's Krafttraining detail texts to
-  // the current source (adds the dynamic single-leg plyometrics progression). Idem-
-  // potent — kraft blocks that already mention "Einbein-Sprünge" are left alone, so
-  // any manual edits the user made to those blocks are preserved.
-  async function migratePlyometrie(idx){
+  // One-time content sync: lift the stored seed block's Krafttraining detail texts
+  // to the current source (adds the dynamic single-leg plyometrics progression).
+  // Idempotent — kraft sessions that already mention "Einbein-Sprünge" are left
+  // alone, so any manual edits the user made to those sessions are preserved.
+  async function migrateSeedContentSync(idx){
     const SEED_ID = 'block-alpencross-2026';
     if(!idx.find(m=>m.id===SEED_ID)) return idx;
     const def = await loadBlockDef(SEED_ID);
@@ -619,19 +674,11 @@
     def.weeks.forEach((wk,wIdx)=>{
       const fw = fresh.weeks[wIdx];
       if(!fw) return;
-      (wk.days||[]).forEach((day,dIdx)=>{
-        const fd = fw.days[dIdx];
-        if(!fd) return;
-        (day.blocks||[]).forEach(bl=>{
-          if(bl.tag!=='kraft' || /Einbein-Sprünge/.test(bl.detail||'')) return;
-          const fb = (fd.blocks||[]).find(x=>x.tag==='kraft' && x.title===bl.title)
-                  || (fd.blocks||[]).find(x=>x.tag==='kraft');
-          if(fb && fb.detail!==bl.detail){ bl.detail = fb.detail; changed = true; }
-        });
-        if(typeof day.rest==='string' && /kein Kraft/.test(day.rest)
-           && !/keine Sprünge/.test(day.rest) && typeof fd.rest==='string'){
-          day.rest = fd.rest; changed = true;
-        }
+      (wk.sessions||[]).forEach(bl=>{
+        if(bl.tag!=='kraft' || /Einbein-Sprünge/.test(bl.detail||'')) return;
+        const fb = (fw.sessions||[]).find(x=>x.tag==='kraft' && x.title===bl.title)
+                || (fw.sessions||[]).find(x=>x.tag==='kraft');
+        if(fb && fb.detail!==bl.detail){ bl.detail = fb.detail; changed = true; }
       });
     });
     if(changed) await saveBlockDef(SEED_ID, def);
@@ -646,7 +693,7 @@
   let activeBlockId = null;
   let selectedWeek = 0;
   let activeFilter = null;
-  let formTarget = null; // {wIdx,dIdx,mode:'add'} | {wIdx,dIdx,mode:'edit',entryId}
+  let formTarget = null; // {wIdx,importance,mode:'add'} | {wIdx,importance,mode:'edit',entryId}
   let blockSummaryCache = {};
   let saveLogTimer = null;
 
@@ -660,10 +707,7 @@
 
   function forEachEntry(cb){
     currentBlock.weeks.forEach((week,wIdx)=>{
-      week.days.forEach((day,dIdx)=>{
-        day.blocks.forEach(bl=>{ if(bl.loggable) cb(bl, wIdx, dIdx, false); });
-        cb({id:'alt-'+wIdx+'-'+dIdx, tag:'alternative', loggable:true, power:null}, wIdx, dIdx, true);
-      });
+      week.sessions.forEach(bl=>{ if(bl.loggable) cb(bl, wIdx); });
     });
   }
 
@@ -699,22 +743,24 @@
     const n = currentBlock.weeks.length, seg = 360/n;
     return 'conic-gradient(from -90deg, ' + currentBlock.weeks.map((w,i)=> w.phaseColor+' '+(i*seg)+'deg '+((i+1)*seg)+'deg').join(', ') + ')';
   }
-  function findTestDate(){
-    let found = null;
-    currentBlock.weeks.forEach((week,wIdx)=>{ week.days.forEach((day,dIdx)=>{ day.blocks.forEach(bl=>{ if(bl.tag==='test' && !found) found = dayDate(currentBlock,wIdx,dIdx); }); }); });
-    return found;
+  function findTestWeekIdx(){
+    for(let i=0;i<currentBlock.weeks.length;i++){
+      if(currentBlock.weeks[i].sessions.some(bl=>bl.tag==='test')) return i;
+    }
+    return null;
+  }
+  function weekKeySessionsDone(wIdx){
+    const key = currentBlock.weeks[wIdx].sessions.filter(bl=>bl.loggable && bl.importance==='key');
+    return key.length===0 || key.every(bl=>isDone(bl.id));
   }
   function computeStreak(){
-    const start = blockStartDate(currentBlock), end = blockEndDate(currentBlock);
+    const start = blockStartDate(currentBlock);
+    let wIdx = computeDefaultSelectedWeek(currentBlock);
+    // only judge weeks that have already ended — an in-progress week isn't a broken streak yet
+    if(addDays(weekStartDate(currentBlock,wIdx),6) >= TODAY) wIdx--;
     let streak = 0;
-    let cursor = new Date(Math.min(TODAY.getTime(), end.getTime()));
-    while(cursor >= start){
-      const diffDays = Math.round((cursor-start)/86400000);
-      const wIdx = Math.floor(diffDays/7), dIdx = diffDays%7;
-      const day = currentBlock.weeks[wIdx].days[dIdx];
-      const loggable = day.blocks.filter(bl=>bl.loggable);
-      if(loggable.length===0){ cursor = addDays(cursor,-1); continue; }
-      if(loggable.every(bl=>isDone(bl.id))){ streak++; cursor = addDays(cursor,-1); } else break;
+    while(wIdx>=0 && weekStartDate(currentBlock,wIdx)>=start){
+      if(weekKeySessionsDone(wIdx)){ streak++; wIdx--; } else break;
     }
     return streak;
   }
@@ -731,12 +777,21 @@
     progressElm.style.maskImage = maskStr; progressElm.style.webkitMaskImage = maskStr;
     document.getElementById('ringPct').textContent = timePct+'%';
 
-    const testDate = findTestDate();
-    const target = testDate || end;
+    const testWeekIdx = findTestWeekIdx();
     let daysLabel;
-    if(TODAY < start) daysLabel = Math.round((start-TODAY)/86400000)+' T. bis Start';
-    else if(TODAY <= target) daysLabel = Math.round((target-TODAY)/86400000)+' T. bis '+(testDate?'Test':'Blockende');
-    else daysLabel = testDate ? 'Test erfolgt' : 'Block abgeschlossen';
+    if(testWeekIdx==null){
+      if(TODAY < start) daysLabel = Math.round((start-TODAY)/86400000)+' T. bis Start';
+      else if(TODAY <= end) daysLabel = Math.round((end-TODAY)/86400000)+' T. bis Blockende';
+      else daysLabel = 'Block abgeschlossen';
+    } else {
+      const testWeekStart = weekStartDate(currentBlock,testWeekIdx), testWeekEnd = addDays(testWeekStart,6);
+      const testSession = currentBlock.weeks[testWeekIdx].sessions.find(bl=>bl.tag==='test');
+      const testDone = testSession && isDone(testSession.id);
+      if(TODAY < start) daysLabel = Math.round((start-TODAY)/86400000)+' T. bis Start';
+      else if(TODAY < testWeekStart) daysLabel = Math.round((testWeekStart-TODAY)/86400000)+' T. bis Testwoche';
+      else if(!testDone && TODAY <= testWeekEnd) daysLabel = 'Testwoche läuft';
+      else daysLabel = testDone ? 'Test erfolgt' : 'Testwoche verpasst';
+    }
     document.getElementById('ringDays').textContent = daysLabel;
 
     let planned=0, done=0;
@@ -745,7 +800,7 @@
     const streak = computeStreak();
     document.getElementById('fieldGrid').innerHTML = [
       {v:pct+'%', l:'Adherence', s:done+' / '+planned+' Einheiten'},
-      {v:streak, l:'Serie (Tage)', s:'lückenlos erfüllt'},
+      {v:streak, l:'Serie (Wochen)', s:'wichtige Einheiten erfüllt'},
       {v:done, l:'Erledigt', s:'seit Blockstart'}
     ].map(f=>'<div class="field"><div class="v">'+f.v+'</div><div class="l">'+f.l+'</div><div class="s">'+f.s+'</div></div>').join('');
 
@@ -763,19 +818,31 @@
   }
 
   /* ============ Heatmap ============ */
+  function buildActivityByDate(){
+    const map = {};
+    currentBlock.weeks.forEach(week=>{
+      week.sessions.forEach(bl=>{
+        if(!isDone(bl.id)) return;
+        const e = entryFor(bl.id);
+        if(!e.date) return;
+        (map[e.date] = map[e.date] || []).push(bl);
+      });
+    });
+    return map;
+  }
   function renderHeatmap(){
     const cols = document.getElementById('heatCols');
+    const activityByDate = buildActivityByDate();
     cols.innerHTML = currentBlock.weeks.map((w,wIdx)=>{
-      const cells = w.days.map((d,dIdx)=>{
+      const dayCells = [0,1,2,3,4,5,6].map(dIdx=>{
         const date = dayDate(currentBlock,wIdx,dIdx);
-        const loggable = d.blocks.filter(bl=>bl.loggable);
         if(date > TODAY) return '<div class="heat-cell future" data-week="'+wIdx+'" title="'+fmtDateFull(date)+' — kommt noch"></div>';
-        if(loggable.length===0) return '<div class="heat-cell rest" data-week="'+wIdx+'" title="'+fmtDateFull(date)+' — Ruhetag"></div>';
-        const done = loggable.filter(bl=>isDone(bl.id)).length;
-        const alpha = 0.14 + 0.76*(done/loggable.length);
-        return '<div class="heat-cell" data-week="'+wIdx+'" style="background:'+hexToRgba(w.phaseColor,alpha)+'" title="'+fmtDateFull(date)+' — '+done+'/'+loggable.length+' erledigt"></div>';
+        const acts = activityByDate[toISODate(date)] || [];
+        if(acts.length===0) return '<div class="heat-cell" data-week="'+wIdx+'" style="background:rgba(233,240,230,.05)" title="'+fmtDateFull(date)+' — nichts geloggt"></div>';
+        const alpha = Math.min(0.9, 0.4 + 0.25*acts.length);
+        return '<div class="heat-cell" data-week="'+wIdx+'" style="background:'+hexToRgba(w.phaseColor,alpha)+'" title="'+fmtDateFull(date)+' — '+acts.length+' erledigt: '+acts.map(a=>a.title).join(', ')+'"></div>';
       }).join('');
-      return '<div class="heat-col"><div class="heat-col-label">W'+(wIdx+1)+'</div>'+cells+'</div>';
+      return '<div class="heat-col"><div class="heat-col-label">W'+(wIdx+1)+'</div>'+dayCells+'</div>';
     }).join('');
     cols.querySelectorAll('.heat-cell').forEach(c=>{
       c.addEventListener('click', ()=>{ const wk=c.dataset.week; if(wk!==undefined){ selectedWeek=parseInt(wk,10); renderAll(); document.getElementById('weekTabs').scrollIntoView({behavior:'smooth',block:'center'}); } });
@@ -785,7 +852,7 @@
   /* ============ Skyline ============ */
   function weekIntensityScore(wIdx){
     let score = 0;
-    currentBlock.weeks[wIdx].days.forEach(day=>day.blocks.forEach(bl=>{ score += INTENSITY_WEIGHTS[bl.tag]||1; }));
+    currentBlock.weeks[wIdx].sessions.forEach(bl=>{ score += INTENSITY_WEIGHTS[bl.tag]||1; });
     return score;
   }
   function computePeakHeights(){
@@ -795,7 +862,7 @@
   }
   function pickPeakShape(wIdx){
     const tags = new Set();
-    currentBlock.weeks[wIdx].days.forEach(day=>day.blocks.forEach(bl=>tags.add(bl.tag)));
+    currentBlock.weeks[wIdx].sessions.forEach(bl=>tags.add(bl.tag));
     if(tags.has('vo2max')) return 'jagged';
     if(tags.has('threshold')) return 'sharp';
     if(wIdx===currentBlock.weeks.length-1) return 'taper';
@@ -841,18 +908,25 @@
     row.querySelectorAll('.filter-chip').forEach(c=>{ c.addEventListener('click', ()=>{ activeFilter = c.dataset.tag || null; renderAll(); }); });
   }
 
-  /* ============ Today ============ */
+  /* ============ Today: this week's recommendation ============ */
   function renderToday(){
     const card = document.getElementById('todayCard');
     const start = blockStartDate(currentBlock), end = blockEndDate(currentBlock);
     if(TODAY < start){ card.innerHTML = '<div class="kicker">Vorschau</div><h3>Block startet am '+fmtDateFull(start)+'</h3><div class="today-empty">Bis dahin: Vorschau auf Woche 1 unten, oder schon jetzt durch den Plan browsen.</div>'; return; }
     if(TODAY > end){ card.innerHTML = '<div class="kicker">Block abgeschlossen</div><h3>Nächsten Block anlegen?</h3><div class="today-empty">Oben über "Blockverwaltung" einen neuen Block starten.</div>'; return; }
-    const diffDays = Math.round((TODAY-start)/86400000);
-    const wIdx = Math.floor(diffDays/7), dIdx = diffDays%7;
-    const day = currentBlock.weeks[wIdx].days[dIdx];
-    let html = '<div class="kicker">'+fmtDateFull(TODAY)+' · Woche '+(wIdx+1)+' · '+escapeHtml(currentBlock.weeks[wIdx].phaseLabel)+'</div><h3>Heute anstehend</h3>';
-    if(day.blocks.length===0){ html += '<div class="today-empty">'+(day.rest?escapeHtml(day.rest):'Ruhetag')+'</div>'; }
-    else { html += '<div class="today-blocks">'+day.blocks.map(bl=>{ const done=isDone(bl.id); return '<div class="mini-block">'+(done?'✓ ':'')+'<b>'+escapeHtml(bl.title)+'</b> — '+escapeHtml(bl.detail)+'</div>'; }).join('')+'</div>'; }
+    const wIdx = computeDefaultSelectedWeek(currentBlock);
+    const week = currentBlock.weeks[wIdx];
+    const openKey = week.sessions.filter(bl=>bl.loggable && bl.importance==='key' && !isDone(bl.id));
+    const openBonus = week.sessions.filter(bl=>bl.loggable && bl.importance==='bonus' && !isDone(bl.id));
+    let html = '<div class="kicker">Woche '+(wIdx+1)+' · '+escapeHtml(week.phaseLabel)+'</div><h3>Diese Woche empfohlen</h3>';
+    if(openKey.length===0 && openBonus.length===0){
+      html += '<div class="today-empty">Alle wichtigen Einheiten dieser Woche sind erledigt.</div>';
+    } else {
+      html += '<div class="today-blocks">';
+      html += openKey.map(bl=>'<div class="mini-block">Wichtig · <b>'+escapeHtml(bl.title)+'</b> — '+escapeHtml(bl.detail)+(bl.timingHint?' <i>('+escapeHtml(bl.timingHint)+')</i>':'')+'</div>').join('');
+      html += openBonus.map(bl=>'<div class="mini-block">Bonus · <b>'+escapeHtml(bl.title)+'</b> — '+escapeHtml(bl.detail)+'</div>').join('');
+      html += '</div>';
+    }
     card.innerHTML = html;
   }
 
@@ -865,20 +939,18 @@
     document.getElementById('weekRange').textContent = fmtDateShort(weekStartDate(currentBlock,selectedWeek))+' – '+fmtDateShort(addDays(weekStartDate(currentBlock,selectedWeek),6))+' · '+w.phaseLabel;
   }
 
-  /* ============ Entry rendering (planned + alternative) ============ */
-  function blockHTML(bl,wIdx,dIdx){
+  /* ============ Entry rendering (week sessions, Wichtig / Bonus) ============ */
+  function blockHTML(bl,wIdx){
     const done = isDone(bl.id);
     const e = entryFor(bl.id);
     const dimmed = activeFilter && bl.tag!==activeFilter;
-    const isAlt = !!bl.isAlternative;
     const isKraft = bl.tag==='kraft';
-    const editBtn = isAlt ? '' : ' <button class="entry-edit-btn" data-editw="'+wIdx+'" data-editd="'+dIdx+'" data-editid="'+bl.id+'" title="Bearbeiten">✎</button>';
-    const titleLine = isAlt
-      ? '<div class="btitle"><span>Alternative Fahrt</span></div>'
-      : '<div class="btitle"><span>'+escapeHtml(bl.title)+'</span>'+editBtn+'</div><div class="bdetail">'+escapeHtml(bl.detail)+'</div>';
-    const descField = isAlt
-      ? '<div class="fl full"><span>Was hast du gemacht?</span><input type="text" data-k="description" value="'+escapeHtml(e.description||'')+'" placeholder="z.B. Waldlauf statt Rad, Reifenpanne"></div>'
-      : '';
+    const editBtn = ' <button class="entry-edit-btn" data-editw="'+wIdx+'" data-editid="'+bl.id+'" title="Bearbeiten">✎</button>';
+    const titleLine = '<div class="btitle"><span>'+escapeHtml(bl.title)+'</span>'+editBtn+'</div>'+
+      (bl.detail?'<div class="bdetail">'+escapeHtml(bl.detail)+'</div>':'')+
+      (bl.timingHint?'<div class="timing-hint">'+escapeHtml(bl.timingHint)+'</div>':'')+
+      (done && e.date?'<div class="done-date">✓ erledigt am '+fmtDateShort(parseISODate(e.date))+'</div>':'');
+    const dateField = '<div class="fl"><span>Datum</span><input type="date" data-k="date" value="'+(e.date||'')+'"></div>';
     const cyclingFields =
       '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>'+
       '<div class="fl"><span>km</span><input type="number" step="0.1" data-k="distanceKm" value="'+(e.distanceKm!=null?e.distanceKm:'')+'"></div>';
@@ -888,9 +960,9 @@
 
     return '<div class="block tag-'+bl.tag+(done?' is-done':'')+(dimmed?' dimmed':'')+'" data-id="'+bl.id+'">'+
       titleLine+
-      '<div class="done-row"><input type="checkbox" id="chk-'+bl.id+'" '+(done?'checked':'')+'><label for="chk-'+bl.id+'">'+(isAlt?'eingetragen':'erledigt')+'</label></div>'+
+      '<div class="done-row"><input type="checkbox" id="chk-'+bl.id+'" '+(done?'checked':'')+'><label for="chk-'+bl.id+'">erledigt</label></div>'+
       '<div class="log-fields'+(done?' open':'')+'" data-fields="'+bl.id+'">'+
-        descField + (isKraft?kraftFields:cyclingFields) +
+        dateField + (isKraft?kraftFields:cyclingFields) +
         '<div class="fl full"><span>Notiz</span><textarea data-k="notes" placeholder="Beobachtung, Wetter...">'+escapeHtml(e.notes||'')+'</textarea></div>'+
         '<div class="vi-note">'+viText+'</div>'+
         '<button class="clear-btn" data-clear="'+bl.id+'">Eintrag zurücksetzen</button>'+
@@ -898,94 +970,106 @@
     '</div>';
   }
 
-  function entryFormHTML(wIdx,dIdx,existing){
-    const tagOptions = Object.keys(TAG_META).filter(t=>t!=='alternative').map(t=>'<option value="'+t+'"'+(existing&&existing.tag===t?' selected':'')+'>'+TAG_META[t].label+'</option>').join('');
-    return '<div class="entry-form" data-w="'+wIdx+'" data-d="'+dIdx+'" data-mode="'+(existing?'edit':'add')+'"'+(existing?' data-eid="'+existing.id+'"':'')+'>'+
-      '<input type="text" class="ef-title" placeholder="Titel, z.B. Hinfahrt: H-kurz" value="'+(existing?escapeHtml(existing.title):'')+'">'+
-      '<input type="text" class="ef-detail" placeholder="Detail, z.B. locker Z2" value="'+(existing?escapeHtml(existing.detail||''):'')+'">'+
-      '<div class="ef-row"><select class="ef-tag">'+tagOptions+'</select><label class="ef-loggable"><input type="checkbox" class="ef-loggable-chk" '+(!existing||existing.loggable?'checked':'')+'> loggbar</label></div>'+
+  function entryFormHTML(wIdx,existing,defaultImp){
+    const defaultTag = defaultImp==='bonus' ? 'locker' : 'sweetspot';
+    const tagOptions = Object.keys(TAG_META).map(t=>'<option value="'+t+'"'+((existing?existing.tag:defaultTag)===t?' selected':'')+'>'+TAG_META[t].label+'</option>').join('');
+    const impOptions = Object.keys(IMPORTANCE_META).map(i=>'<option value="'+i+'"'+((existing?existing.importance:defaultImp)===i?' selected':'')+'>'+IMPORTANCE_META[i].label+'</option>').join('');
+    return '<div class="entry-form" data-w="'+wIdx+'" data-mode="'+(existing?'edit':'add')+'"'+(existing?' data-eid="'+existing.id+'"':'')+'>'+
+      '<input type="text" class="ef-title" placeholder="Titel, z.B. Sweet Spot Intervalle" value="'+(existing?escapeHtml(existing.title):'')+'">'+
+      '<input type="text" class="ef-detail" placeholder="Detail, z.B. 2×10 Min @200-210 W" value="'+(existing?escapeHtml(existing.detail||''):'')+'">'+
+      '<div class="ef-row"><select class="ef-tag">'+tagOptions+'</select><select class="ef-importance">'+impOptions+'</select></div>'+
+      '<div class="ef-row"><label class="ef-loggable"><input type="checkbox" class="ef-loggable-chk" '+(!existing||existing.loggable?'checked':'')+'> loggbar</label></div>'+
       '<div class="ef-row"><input type="number" class="ef-pmin" placeholder="Ziel min W" value="'+(existing&&existing.power?existing.power[0]:'')+'"><input type="number" class="ef-pmax" placeholder="Ziel max W" value="'+(existing&&existing.power?existing.power[1]:'')+'"></div>'+
+      '<input type="text" class="ef-timing" placeholder="Zeitliche Empfehlung, z.B. früh in der Woche (optional)" value="'+(existing&&existing.timingHint?escapeHtml(existing.timingHint):'')+'">'+
       '<div class="ef-actions"><button class="ef-save">'+(existing?'Speichern':'Hinzufügen')+'</button>'+(existing?'<button class="ef-delete">Löschen</button>':'')+'<button class="ef-cancel">Abbrechen</button></div>'+
     '</div>';
   }
 
-  function renderDayGrid(){
-    const grid = document.getElementById('dayGrid');
+  function sessionGroupHTML(wIdx, importance, label, sub){
+    const week = currentBlock.weeks[wIdx];
+    const sessions = week.sessions.filter(bl=>bl.importance===importance);
+    let inner = sessions.map(bl=>blockHTML(bl,wIdx)).join('');
+    if(sessions.length===0) inner = '<div class="wg-empty">Keine '+label.toLowerCase()+'en Einheiten diese Woche.</div>';
+    if(formTarget && formTarget.wIdx===wIdx && formTarget.importance===importance && formTarget.mode==='edit'){
+      const entry = sessions.find(x=>x.id===formTarget.entryId);
+      if(entry) inner += entryFormHTML(wIdx,entry,importance);
+    }
+    if(formTarget && formTarget.wIdx===wIdx && formTarget.importance===importance && formTarget.mode==='add'){
+      inner += entryFormHTML(wIdx,null,importance);
+    } else {
+      inner += '<button class="add-entry-btn" data-vaddw="'+wIdx+'" data-vaddimp="'+importance+'">+ Eintrag</button>';
+    }
+    return '<div class="week-group'+(importance==='bonus'?' is-bonus':'')+'"><div class="wg-head">'+label+'<span class="wg-sub">'+sub+'</span></div><div class="wg-list">'+inner+'</div></div>';
+  }
+
+  function renderWeekGroups(){
+    const wrap = document.getElementById('weekGroups');
     const wIdx = selectedWeek;
     const week = currentBlock.weeks[wIdx];
-    grid.innerHTML = week.days.map((d,dIdx)=>{
-      const date = dayDate(currentBlock,wIdx,dIdx);
-      const isToday = sameDay(date, TODAY);
-      let inner = d.blocks.map(bl=>blockHTML(bl,wIdx,dIdx)).join('');
-      if(d.blocks.length===0 && d.rest){ inner = '<div class="rest-note">'+escapeHtml(d.rest)+'</div>'; }
-      else if(d.rest){ inner = '<div class="rest-note">'+escapeHtml(d.rest)+'</div>'+inner; }
-      const altEntry = {id:'alt-'+wIdx+'-'+dIdx, title:'Alternative Fahrt', detail:'', tag:'alternative', loggable:true, power:null, isAlternative:true};
-      inner += blockHTML(altEntry, wIdx, dIdx);
-      if(formTarget && formTarget.wIdx===wIdx && formTarget.dIdx===dIdx && formTarget.mode==='edit'){
-        const entry = d.blocks.find(x=>x.id===formTarget.entryId);
-        if(entry) inner += entryFormHTML(wIdx,dIdx,entry);
-      }
-      if(formTarget && formTarget.wIdx===wIdx && formTarget.dIdx===dIdx && formTarget.mode==='add'){
-        inner += entryFormHTML(wIdx,dIdx,null);
-      } else {
-        inner += '<button class="add-entry-btn" data-vaddw="'+wIdx+'" data-vaddd="'+dIdx+'">+ Eintrag</button>';
-      }
-      return '<div class="day-card'+(isToday?' is-today':'')+'"><div class="day-head"><span class="d">'+DAY_LABELS[dIdx]+'</span><span class="dt mono">'+fmtDateShort(date)+'</span></div>'+inner+'</div>';
-    }).join('');
+    document.getElementById('weekNote').textContent = week.weekNote || '';
+    wrap.innerHTML = sessionGroupHTML(wIdx,'key','Wichtig','Pflicht diese Woche') + sessionGroupHTML(wIdx,'bonus','Bonus','optional');
 
-    grid.querySelectorAll('input[type=checkbox][id^="chk-"]').forEach(chk=>{
+    wrap.querySelectorAll('input[type=checkbox][id^="chk-"]').forEach(chk=>{
       chk.addEventListener('change', ()=>{
         const id = chk.id.replace('chk-','');
         LOG.entries[id] = LOG.entries[id] || {};
         LOG.entries[id].done = chk.checked;
         if(chk.checked && !LOG.entries[id].loggedAt) LOG.entries[id].loggedAt = new Date().toISOString();
+        if(chk.checked && !LOG.entries[id].date) LOG.entries[id].date = toISODate(TODAY);
         saveLogDebounced(); renderAll();
       });
     });
-    grid.querySelectorAll('.log-fields input, .log-fields textarea').forEach(inp=>{
+    wrap.querySelectorAll('.log-fields input, .log-fields textarea').forEach(inp=>{
       inp.addEventListener('input', ()=>{
         const id = inp.closest('.log-fields').dataset.fields;
         LOG.entries[id] = LOG.entries[id] || {};
         const k = inp.dataset.k;
-        const isText = (k==='notes' || k==='description');
+        const isText = (k==='notes' || k==='date');
         LOG.entries[id][k] = isText ? inp.value : (inp.value===''?null:parseFloat(inp.value));
         saveLogDebounced();
-        const wrap = inp.closest('.log-fields');
-        const viEl = wrap.querySelector('.vi-note');
+        const wrapEl = inp.closest('.log-fields');
+        const viEl = wrapEl.querySelector('.vi-note');
         if(viEl){ const entry=LOG.entries[id]; viEl.textContent = (entry.power && entry.np) ? 'VI '+(entry.np/entry.power).toFixed(2) : ''; }
       });
     });
-    grid.querySelectorAll('[data-clear]').forEach(btn=>{
+    wrap.querySelectorAll('[data-clear]').forEach(btn=>{
       btn.addEventListener('click', ()=>{ delete LOG.entries[btn.dataset.clear]; saveLogDebounced(); renderAll(); });
     });
-    grid.querySelectorAll('.entry-edit-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{ formTarget = {wIdx:parseInt(btn.dataset.editw,10), dIdx:parseInt(btn.dataset.editd,10), mode:'edit', entryId:btn.dataset.editid}; renderAll(); });
+    wrap.querySelectorAll('.entry-edit-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const eWIdx = parseInt(btn.dataset.editw,10), eId = btn.dataset.editid;
+        const entry = currentBlock.weeks[eWIdx].sessions.find(x=>x.id===eId);
+        formTarget = {wIdx:eWIdx, importance: entry?entry.importance:'key', mode:'edit', entryId:eId};
+        renderAll();
+      });
     });
-    grid.querySelectorAll('.add-entry-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{ formTarget = {wIdx:parseInt(btn.dataset.vaddw,10), dIdx:parseInt(btn.dataset.vaddd,10), mode:'add'}; renderAll(); });
+    wrap.querySelectorAll('.add-entry-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ formTarget = {wIdx:parseInt(btn.dataset.vaddw,10), importance:btn.dataset.vaddimp, mode:'add'}; renderAll(); });
     });
-    grid.querySelectorAll('.entry-form').forEach(form=>{
-      const fWIdx = parseInt(form.dataset.w,10), fDIdx = parseInt(form.dataset.d,10);
+    wrap.querySelectorAll('.entry-form').forEach(form=>{
+      const fWIdx = parseInt(form.dataset.w,10);
       form.querySelector('.ef-cancel').addEventListener('click', ()=>{ formTarget=null; renderAll(); });
       form.querySelector('.ef-save').addEventListener('click', async ()=>{
         const title = form.querySelector('.ef-title').value.trim();
         if(!title){ alert('Bitte einen Titel angeben.'); return; }
         const detail = form.querySelector('.ef-detail').value.trim();
         const tag = form.querySelector('.ef-tag').value;
+        const importance = form.querySelector('.ef-importance').value;
         const loggable = form.querySelector('.ef-loggable-chk').checked;
         const pminRaw = form.querySelector('.ef-pmin').value, pmaxRaw = form.querySelector('.ef-pmax').value;
         const power = (pminRaw!=='' && pmaxRaw!=='') ? [parseFloat(pminRaw), parseFloat(pmaxRaw)] : null;
-        const day = currentBlock.weeks[fWIdx].days[fDIdx];
-        if(form.dataset.mode==='add'){ day.blocks.push({id:uid(), title, detail, tag, loggable, power}); }
-        else { const entry = day.blocks.find(x=>x.id===form.dataset.eid); if(entry){ entry.title=title; entry.detail=detail; entry.tag=tag; entry.loggable=loggable; entry.power=power; } }
+        const timingHint = form.querySelector('.ef-timing').value.trim() || null;
+        const week = currentBlock.weeks[fWIdx];
+        if(form.dataset.mode==='add'){ week.sessions.push({id:uid(), title, detail, tag, importance, loggable, power, timingHint}); }
+        else { const entry = week.sessions.find(x=>x.id===form.dataset.eid); if(entry){ entry.title=title; entry.detail=detail; entry.tag=tag; entry.importance=importance; entry.loggable=loggable; entry.power=power; entry.timingHint=timingHint; } }
         await saveBlockDef(currentBlock.id, currentBlock);
         formTarget = null; renderAll();
       });
       const delBtn = form.querySelector('.ef-delete');
       if(delBtn) delBtn.addEventListener('click', async ()=>{
         if(!confirm('Diesen Eintrag wirklich löschen? Zugehörige Logdaten gehen verloren.')) return;
-        const day = currentBlock.weeks[fWIdx].days[fDIdx];
-        day.blocks = day.blocks.filter(x=>x.id!==form.dataset.eid);
+        const week = currentBlock.weeks[fWIdx];
+        week.sessions = week.sessions.filter(x=>x.id!==form.dataset.eid);
         delete LOG.entries[form.dataset.eid];
         await saveBlockDef(currentBlock.id, currentBlock);
         saveLogDebounced();
@@ -1006,7 +1090,7 @@
     wrap.innerHTML = tags.map(t=>'<div class="chart-card spark-card"><h4>'+TAG_META[t].label+'<span class="latest" id="spark-latest-'+t+'"></span></h4><div class="band-note" id="spark-band-'+t+'"></div><div id="spark-wrap-'+t+'"></div></div>').join('');
     tags.forEach(tag=>{
       const sessions = [];
-      forEachEntry((bl,wIdx,dIdx)=>{ if(bl.tag===tag && bl.power && isDone(bl.id) && entryFor(bl.id).power!=null) sessions.push({bl,date:dayDate(currentBlock,wIdx,dIdx)}); });
+      forEachEntry((bl)=>{ const e=entryFor(bl.id); if(bl.tag===tag && bl.power && isDone(bl.id) && e.power!=null) sessions.push({bl,date:e.date?parseISODate(e.date):new Date(e.loggedAt||Date.now())}); });
       sessions.sort((a,b)=>a.date-b.date);
       const bandEl = document.getElementById('spark-band-'+tag), latestEl = document.getElementById('spark-latest-'+tag);
       let targetSample = null;
@@ -1059,7 +1143,7 @@
 
   function renderDetailCharts(){
     let structured = [];
-    forEachEntry((bl,wIdx,dIdx)=>{ if(bl.power && isDone(bl.id) && entryFor(bl.id).power!=null){ if(!activeFilter || bl.tag===activeFilter) structured.push({bl,date:dayDate(currentBlock,wIdx,dIdx)}); } });
+    forEachEntry((bl)=>{ const e=entryFor(bl.id); if(bl.power && isDone(bl.id) && e.power!=null){ if(!activeFilter || bl.tag===activeFilter) structured.push({bl,date:e.date?parseISODate(e.date):new Date(e.loggedAt||Date.now())}); } });
     structured.sort((a,b)=>a.date-b.date);
     if(structured.length===0){ document.getElementById('deviationWrap').innerHTML = '<div class="chart-empty">Noch keine Watt-Werte zu strukturierten Einheiten geloggt.</div>'; }
     else {
@@ -1088,11 +1172,11 @@
   /* ============ History ============ */
   function renderHistory(){
     const rows = [];
-    forEachEntry((bl,wIdx,dIdx)=>{
+    forEachEntry((bl,wIdx)=>{
       if(isDone(bl.id)){
         const e = entryFor(bl.id);
-        const title = bl.tag==='alternative' ? ('Alternative: '+(e.description||'(keine Beschreibung)')) : bl.title;
-        rows.push({date:dayDate(currentBlock,wIdx,dIdx), week:wIdx+1, title, tag:bl.tag, power:e.power, np:e.np, durationMin:e.durationMin, distanceKm:e.distanceKm, elevationM:e.elevationM, rpe:e.rpe, notes:e.notes});
+        const date = e.date ? parseISODate(e.date) : new Date(e.loggedAt||Date.now());
+        rows.push({date, week:wIdx+1, title:bl.title, tag:bl.tag, power:e.power, np:e.np, durationMin:e.durationMin, distanceKm:e.distanceKm, elevationM:e.elevationM, rpe:e.rpe, notes:e.notes});
       }
     });
     let filtered = activeFilter ? rows.filter(r=>r.tag===activeFilter) : rows;
@@ -1121,14 +1205,11 @@
   /* ============ Cross-block overview ============ */
   function computeBlockStats(block, log){
     let planned=0, done=0, totalKm=0, totalHm=0;
-    const ids = [];
-    block.weeks.forEach((week,wIdx)=>{
-      week.days.forEach((day,dIdx)=>{
-        day.blocks.forEach(bl=>{ if(bl.loggable){ planned++; if(log.entries[bl.id]&&log.entries[bl.id].done) done++; ids.push(bl.id); } });
-        ids.push('alt-'+wIdx+'-'+dIdx);
+    block.weeks.forEach(week=>{
+      week.sessions.forEach(bl=>{
+        if(bl.loggable){ planned++; const e=log.entries[bl.id]; if(e&&e.done){ done++; if(e.distanceKm) totalKm+=e.distanceKm; if(e.elevationM) totalHm+=e.elevationM; } }
       });
     });
-    ids.forEach(id=>{ const e=log.entries[id]; if(e&&e.done){ if(e.distanceKm) totalKm+=e.distanceKm; if(e.elevationM) totalHm+=e.elevationM; } });
     return { adherencePct: planned?Math.round(100*done/planned):0, totalKm, totalHm };
   }
   async function renderBlockOverview(){
@@ -1170,26 +1251,23 @@
     for(let i=0;i<p.weeks.length;i++){
       const w = p.weeks[i];
       if(!w || !w.phaseLabel || !w.phaseColor) return 'Woche '+(i+1)+': "phaseLabel" oder "phaseColor" fehlt.';
-      if(!Array.isArray(w.days) || w.days.length!==7) return 'Woche '+(i+1)+' hat '+((w.days&&w.days.length)||0)+' statt 7 Tage.';
-      for(let j=0;j<7;j++){
-        const d = w.days[j];
-        if(!d || !Array.isArray(d.blocks)) return 'Woche '+(i+1)+', Tag '+(j+1)+': "blocks" fehlt oder ist kein Array.';
-        for(const bl of d.blocks){
-          if(!bl.title) return 'Woche '+(i+1)+', Tag '+(j+1)+': ein Eintrag hat keinen "title".';
-          if(!bl.tag || !TAG_META[bl.tag] || bl.tag==='alternative') return 'Woche '+(i+1)+', Tag '+(j+1)+': ungültiger tag "'+bl.tag+'".';
-        }
+      if(!Array.isArray(w.sessions)) return 'Woche '+(i+1)+': "sessions" fehlt oder ist kein Array.';
+      for(const bl of w.sessions){
+        if(!bl.title) return 'Woche '+(i+1)+': ein Eintrag hat keinen "title".';
+        if(!bl.tag || !TAG_META[bl.tag]) return 'Woche '+(i+1)+': ungültiger tag "'+bl.tag+'".';
+        if(bl.importance!==undefined && !IMPORTANCE_META[bl.importance]) return 'Woche '+(i+1)+': ungültige importance "'+bl.importance+'" (erlaubt: key, bonus).';
       }
     }
     return null;
   }
 
   /* ============ Strava import ============ */
-  function findDayForDate(isoStr){
+  function findWeekForDate(isoStr){
     const date = parseISODate(isoStr);
     const start = blockStartDate(currentBlock), end = blockEndDate(currentBlock);
     if(date < start || date > end) return null;
     const diffDays = Math.round((date-start)/86400000);
-    return { wIdx: Math.floor(diffDays/7), dIdx: diffDays%7 };
+    return Math.floor(diffDays/7);
   }
   function validateStravaJSON(arr){
     if(!Array.isArray(arr)) return 'Muss ein Array sein.';
@@ -1200,36 +1278,47 @@
     return null;
   }
   let pendingStravaActivities = [];
+  let pendingStravaWeeks = [];
   function renderStravaMatches(activities){
     pendingStravaActivities = activities;
+    pendingStravaWeeks = [];
     const wrap = document.getElementById('stravaMatchWrap');
     const rows = activities.map((act,idx)=>{
-      const loc = findDayForDate(act.date);
+      const wIdx = findWeekForDate(act.date);
+      pendingStravaWeeks[idx] = wIdx;
       const summary = (act.distanceKm!=null?act.distanceKm+' km':'')+(act.elevationM!=null?' · '+act.elevationM+' Hm':'')+(act.avgWatts!=null?' · '+act.avgWatts+' W':'');
-      if(!loc){
+      if(wIdx==null){
         return '<tr><td class="mono">'+act.date+'</td><td>'+escapeHtml(act.name||'Aktivität')+'<div class="strava-summary">'+summary+'</div></td><td colspan="1" style="color:var(--crimson)">außerhalb des aktiven Blocks</td></tr>';
       }
-      const day = currentBlock.weeks[loc.wIdx].days[loc.dIdx];
-      const candidates = day.blocks.filter(bl=>bl.loggable);
+      const candidates = currentBlock.weeks[wIdx].sessions.filter(bl=>bl.loggable);
       const options = candidates.map(bl=>'<option value="'+bl.id+'">'+escapeHtml(bl.title)+(isDone(bl.id)?' (bereits erledigt)':'')+'</option>').join('');
-      return '<tr data-idx="'+idx+'"><td class="mono">'+fmtDateShort(dayDate(currentBlock,loc.wIdx,loc.dIdx))+'</td>'+
+      return '<tr data-idx="'+idx+'"><td class="mono">'+fmtDateShort(parseISODate(act.date))+'</td>'+
         '<td>'+escapeHtml(act.name||'Aktivität')+'<div class="strava-summary">'+summary+'</div></td>'+
-        '<td><select class="strava-target-select" data-idx="'+idx+'">'+options+'<option value="alt-'+loc.wIdx+'-'+loc.dIdx+'">Alternative Fahrt</option><option value="">Ignorieren</option></select></td></tr>';
+        '<td><select class="strava-target-select" data-idx="'+idx+'">'+options+'<option value="new-bonus">Neue Bonus-Einheit anlegen</option><option value="">Ignorieren</option></select></td></tr>';
     }).join('');
     wrap.innerHTML = '<table class="strava-match-table"><thead><tr><th>Datum</th><th>Aktivität</th><th>Ziel-Eintrag</th></tr></thead><tbody>'+rows+'</tbody></table>'+
       '<button id="stravaApplyBtn">Übernehmen</button>';
     document.getElementById('stravaApplyBtn').addEventListener('click', applyStravaMatches);
   }
-  function applyStravaMatches(){
+  async function applyStravaMatches(){
     const selects = document.querySelectorAll('.strava-target-select');
     let count = 0;
+    let changedDef = false;
     selects.forEach(sel=>{
-      const targetId = sel.value;
+      let targetId = sel.value;
       if(!targetId) return;
-      const act = pendingStravaActivities[parseInt(sel.dataset.idx,10)];
+      const idx = parseInt(sel.dataset.idx,10);
+      const act = pendingStravaActivities[idx];
+      const wIdx = pendingStravaWeeks[idx];
+      if(targetId==='new-bonus'){
+        targetId = uid();
+        currentBlock.weeks[wIdx].sessions.push({ id:targetId, title: act.name||'Alternative Fahrt', detail:'', tag:'alternative', importance:'bonus', loggable:true, power:null, timingHint:null });
+        changedDef = true;
+      }
       LOG.entries[targetId] = LOG.entries[targetId] || {};
       const e = LOG.entries[targetId];
       e.done = true;
+      e.date = act.date;
       if(!e.loggedAt) e.loggedAt = new Date().toISOString();
       if(act.avgWatts!=null) e.power = act.avgWatts;
       if(act.np!=null) e.np = act.np;
@@ -1238,9 +1327,9 @@
       if(act.elevationM!=null) e.elevationM = act.elevationM;
       const stravaNote = 'Strava: '+(act.name||'')+(act.avgHr!=null?', Ø HF '+act.avgHr:'');
       e.notes = e.notes ? e.notes+' | '+stravaNote : stravaNote;
-      if(targetId.indexOf('alt-')===0 && !e.description) e.description = act.name || '';
       count++;
     });
+    if(changedDef) await saveBlockDef(currentBlock.id, currentBlock);
     saveLogDebounced();
     document.getElementById('stravaMatchWrap').innerHTML = '';
     document.getElementById('stravaJsonInput').value = '';
@@ -1271,7 +1360,7 @@
       if(!name || !startRaw || !numWeeks || numWeeks<1){ alert('Bitte Name, Startdatum und Wochenzahl angeben.'); return; }
       const palette = ['#E7B24F','#E4713F','#E14C63','#6FB4DB'];
       const weeks = [];
-      for(let i=0;i<numWeeks;i++){ weeks.push({phaseLabel:'Woche '+(i+1), phaseColor:palette[i%palette.length], days:Array.from({length:7},()=>({rest:null,blocks:[]}))}); }
+      for(let i=0;i<numWeeks;i++){ weeks.push({phaseLabel:'Woche '+(i+1), phaseColor:palette[i%palette.length], sessions:[]}); }
       const id = 'block-'+Date.now().toString(36);
       const block = {id, name, startDate:startRaw, weeks};
       await saveBlockDef(id, block);
@@ -1302,10 +1391,12 @@
       const err = validateBlockJSON(parsed);
       if(err){ errEl.textContent = err; return; }
       parsed.weeks.forEach(week=>{
-        week.days.forEach(day=>{
-          day.blocks = day.blocks.map(bl=>({ id: bl.id || uid(), title:bl.title, detail:bl.detail||'', tag:bl.tag, loggable: bl.loggable!==false, power: bl.power||null }));
-          if(day.rest===undefined) day.rest = null;
-        });
+        week.sessions = week.sessions.map(bl=>({
+          id: bl.id || uid(), title:bl.title, detail:bl.detail||'', tag:bl.tag,
+          importance: bl.importance || defaultImportance(bl.tag),
+          loggable: bl.loggable!==false, power: bl.power||null, timingHint: bl.timingHint||null
+        }));
+        if(week.weekNote===undefined) week.weekNote = null;
       });
       const id = 'block-'+Date.now().toString(36);
       const block = {id, name:parsed.name, startDate:parsed.startDate, weeks:parsed.weeks};
@@ -1347,7 +1438,7 @@
     renderFilterChips();
     renderToday();
     renderWeekTabs();
-    renderDayGrid();
+    renderWeekGroups();
     renderCharts();
     renderHistory();
     renderBlockOverview();
