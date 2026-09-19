@@ -294,7 +294,7 @@
             <button id="nbCreateEmpty">Anlegen</button>
           </div>
           <div class="nb-pane" id="nbJson" style="display:none">
-            <div class="nb-hint">Schema: {name, startDate "YYYY-MM-DD", weeks:[{phaseLabel, phaseColor, weekNote?, sessions:[{title, detail, tag, importance:"key"|"bonus", loggable, power:[min,max], timingHint?}]}]}. Gültige tags: sweetspot, threshold, vo2max, taper, kraft, lang, locker, test, alternative. "importance" steuert Wichtig/Bonus (Default: locker/taper→bonus, sonst key). Kein fester Wochentag mehr — beim Abhaken wird das tatsächliche Datum gewählt.</div>
+            <div class="nb-hint">Schema: {name, startDate "YYYY-MM-DD", weeks:[{phaseLabel, phaseColor, weekNote?, sessions:[{title, detail, tag, importance:"key"|"bonus", loggable, power:[min,max], timingHint?}]}]}. Gültige tags: sweetspot, threshold, vo2max, taper, kraft, lang, locker, test, alternative. "importance" steuert Wichtig/Bonus (Default: sweetspot/threshold/vo2max/kraft→wichtig, sonst bonus). Kein fester Wochentag mehr — beim Abhaken wird das tatsächliche Datum gewählt.</div>
             <button id="nbShowExample" class="nb-secondary">Beispiel einfügen</button>
             <textarea id="nbJsonInput" rows="10" placeholder="JSON hier einfügen..."></textarea>
             <div class="nb-error" id="nbJsonError"></div>
@@ -387,7 +387,7 @@
   <section>
     <h2 class="section-title">Wochenvergleich<span class="tier">Tier 2 · Zoom</span></h2>
     <div class="chart-grid">
-      <div class="chart-card"><h4>Adherence pro Woche</h4><div id="adherenceWrap"><canvas id="adherenceChart"></canvas></div></div>
+      <div class="chart-card"><h4>Adherence pro Woche<span class="latest" style="font-weight:400;">nur wichtige Einheiten</span></h4><div id="adherenceWrap"><canvas id="adherenceChart"></canvas></div></div>
       <div class="chart-card"><h4>Wochenvolumen</h4><div id="volumeWrap"><canvas id="volumeChart"></canvas></div></div>
       <div class="chart-card"><h4>Krafttraining: geplant vs. erledigt</h4><div id="strengthWrap"><canvas id="strengthChart"></canvas></div></div>
     </div>
@@ -434,7 +434,8 @@
   const FILTER_TAGS = ['sweetspot','threshold','vo2max','kraft','lang','locker','alternative'];
   const INTENSITY_WEIGHTS = {locker:1, sweetspot:2, threshold:3, vo2max:4, taper:1.5, test:3, kraft:1.5, lang:2};
   const IMPORTANCE_META = { key:{label:'Wichtig'}, bonus:{label:'Bonus'} };
-  function defaultImportance(tag){ return (tag==='locker' || tag==='taper') ? 'bonus' : 'key'; }
+  const KEY_TAGS = new Set(['sweetspot','threshold','vo2max','kraft']);
+  function defaultImportance(tag){ return KEY_TAGS.has(tag) ? 'key' : 'bonus'; }
 
   const EXAMPLE_BLOCK = {
     name: "Beispiel-Block",
@@ -443,7 +444,7 @@
       { phaseLabel:"Grundlage", phaseColor:"#6FB4DB", weekNote:"Ruhetag flexibel einlegen, z.B. am Wochenende.", sessions: [
         {title:"Sweet Spot Intervalle", detail:"2×10 Min @200–210 W", tag:"sweetspot", importance:"key", loggable:true, power:[200,210], timingHint:"früh in der Woche"},
         {title:"Krafttraining", detail:"Beinpresse 4×4–6 @85–90%", tag:"kraft", importance:"key", loggable:true, timingHint:"nicht am selben Tag wie die Intervalle"},
-        {title:"Lange Ausfahrt", detail:"2 Std. Z2", tag:"lang", importance:"key", loggable:true, timingHint:"am Wochenende"},
+        {title:"Lange Ausfahrt", detail:"2 Std. Z2", tag:"lang", importance:"bonus", loggable:true, timingHint:"am Wochenende"},
         {title:"Lockere Ausfahrten", detail:"Pendelfahrten Z1–Z2, so oft wie es passt", tag:"locker", importance:"bonus", loggable:true}
       ]}
     ]
@@ -591,6 +592,7 @@
     idx = await migrateSeedRename(idx);
     await migrateAllBlocksToSessions(idx);
     idx = await migrateSeedContentSync(idx);
+    await migrateImportanceRulesV2(idx);
     return idx;
   }
 
@@ -683,6 +685,24 @@
     });
     if(changed) await saveBlockDef(SEED_ID, def);
     return idx;
+  }
+
+  // One-time migration: "Wichtig" now only covers Sweetspot/Threshold/VO2max/Kraft
+  // (die Einheiten, die für Streak und Wochenvergleich zählen) — Lange Ausfahrt,
+  // Taper und der FTP-Test wandern zu Bonus. Pro Block markiert via importanceRulesV2,
+  // damit eine spätere manuelle Rückstufung auf "Wichtig" nicht wieder überschrieben wird.
+  async function migrateImportanceRulesV2(idx){
+    for(const meta of idx){
+      const def = await loadBlockDef(meta.id);
+      if(!def || !Array.isArray(def.weeks) || def.importanceRulesV2) continue;
+      def.weeks.forEach(w=>{
+        (w.sessions||[]).forEach(bl=>{
+          if(bl.importance==='key' && !KEY_TAGS.has(bl.tag)) bl.importance = 'bonus';
+        });
+      });
+      def.importanceRulesV2 = true;
+      await saveBlockDef(meta.id, def);
+    }
   }
 
   /* ============ App state ============ */
@@ -1123,7 +1143,7 @@
     const kraftPlanned = new Array(n).fill(0), kraftDone = new Array(n).fill(0);
     const weekKm = new Array(n).fill(0), weekHm = new Array(n).fill(0);
     forEachEntry((bl,wIdx)=>{
-      if(bl.tag!=='alternative'){ planned[wIdx]++; if(isDone(bl.id)) done[wIdx]++; if(bl.tag==='kraft'){ kraftPlanned[wIdx]++; if(isDone(bl.id)) kraftDone[wIdx]++; } }
+      if(bl.importance==='key'){ planned[wIdx]++; if(isDone(bl.id)) done[wIdx]++; if(bl.tag==='kraft'){ kraftPlanned[wIdx]++; if(isDone(bl.id)) kraftDone[wIdx]++; } }
       if(isDone(bl.id)){ const e=entryFor(bl.id); if(e.distanceKm) weekKm[wIdx]+=e.distanceKm; if(e.elevationM) weekHm[wIdx]+=e.elevationM; }
     });
     const labels = currentBlock.weeks.map((w,i)=>'Wo '+(i+1));
