@@ -309,7 +309,7 @@
     <details class="collapsible">
       <summary class="section-title"><span class="caret">▸</span>Strava-Import</summary>
       <div class="collapsible-body block-manager">
-        <div class="nb-hint">Ich hole deine Fahrten über die Strava-Verbindung im Chat und liefere sie dir als JSON in diesem Format — hier einfügen, dann jeder Aktivität den passenden Plan-Eintrag zuweisen.</div>
+        <div class="nb-hint">Ich hole deine Fahrten über die Strava-Verbindung im Chat und liefere sie dir als JSON in diesem Format (optional "intervalWatts" = Ø-Leistung nur der Intervalle, für den Trend je Belastungstyp) — hier einfügen, dann jeder Aktivität den passenden Plan-Eintrag zuweisen.</div>
         <div class="nb-pane" style="max-width:600px;margin-top:10px">
           <button id="stravaShowExample" class="nb-secondary">Beispiel-Format zeigen</button>
           <textarea id="stravaJsonInput" rows="6" placeholder='[{"date":"2026-09-15","name":"Morgenfahrt","distanceKm":13.2,"elevationM":105,"durationMin":32,"avgWatts":145,"np":152,"avgHr":128}]'></textarea>
@@ -452,7 +452,7 @@
 
   const STRAVA_EXAMPLE = [
     { date:"2026-09-15", name:"Morgenfahrt", distanceKm:13.2, elevationM:105, durationMin:32, avgWatts:145, np:152, avgHr:128 },
-    { date:"2026-09-15", name:"Nachmittagsfahrt", distanceKm:19.9, elevationM:170, durationMin:48, avgWatts:198, np:207, avgHr:141 }
+    { date:"2026-09-15", name:"Nachmittagsfahrt", distanceKm:19.9, elevationM:170, durationMin:48, avgWatts:198, np:207, avgHr:141, intervalWatts:206 }
   ];
 
   /* ============ Utils ============ */
@@ -973,7 +973,8 @@
     const dateField = '<div class="fl"><span>Datum</span><input type="date" data-k="date" value="'+(e.date||'')+'"></div>';
     const cyclingFields =
       '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>'+
-      '<div class="fl"><span>km</span><input type="number" step="0.1" data-k="distanceKm" value="'+(e.distanceKm!=null?e.distanceKm:'')+'"></div>';
+      '<div class="fl"><span>km</span><input type="number" step="0.1" data-k="distanceKm" value="'+(e.distanceKm!=null?e.distanceKm:'')+'"></div>'+
+      (bl.power?'<div class="fl"><span>Intervall-Ø (W)</span><input type="number" data-k="intervalPower" value="'+(e.intervalPower!=null?e.intervalPower:'')+'"></div>':'');
     const kraftFields =
       '<div class="fl"><span>Dauer (min)</span><input type="number" data-k="durationMin" value="'+(e.durationMin!=null?e.durationMin:'')+'"></div>';
     const viText = (e.power && e.np) ? 'VI '+(e.np/e.power).toFixed(2) : '';
@@ -1110,16 +1111,16 @@
     wrap.innerHTML = tags.map(t=>'<div class="chart-card spark-card"><h4>'+TAG_META[t].label+'<span class="latest" id="spark-latest-'+t+'"></span></h4><div class="band-note" id="spark-band-'+t+'"></div><div id="spark-wrap-'+t+'"></div></div>').join('');
     tags.forEach(tag=>{
       const sessions = [];
-      forEachEntry((bl)=>{ const e=entryFor(bl.id); if(bl.tag===tag && bl.power && isDone(bl.id) && e.power!=null) sessions.push({bl,date:e.date?parseISODate(e.date):new Date(e.loggedAt||Date.now())}); });
+      forEachEntry((bl)=>{ const e=entryFor(bl.id); if(bl.tag===tag && bl.power && isDone(bl.id) && e.intervalPower!=null) sessions.push({bl,date:e.date?parseISODate(e.date):new Date(e.loggedAt||Date.now())}); });
       sessions.sort((a,b)=>a.date-b.date);
       const bandEl = document.getElementById('spark-band-'+tag), latestEl = document.getElementById('spark-latest-'+tag);
       let targetSample = null;
       forEachEntry(bl=>{ if(!targetSample && bl.tag===tag && bl.power) targetSample = bl; });
       bandEl.textContent = targetSample ? 'Ziel: '+targetSample.power[0]+'–'+targetSample.power[1]+' W' : '';
-      if(sessions.length===0){ document.getElementById('spark-wrap-'+tag).innerHTML = '<div class="chart-empty">Noch keine Werte geloggt.</div>'; latestEl.textContent=''; return; }
+      if(sessions.length===0){ document.getElementById('spark-wrap-'+tag).innerHTML = '<div class="chart-empty">Noch keine Intervall-Watt geloggt.</div>'; latestEl.textContent=''; return; }
       document.getElementById('spark-wrap-'+tag).innerHTML = '<canvas id="spark-canvas-'+tag+'"></canvas>';
       const labels = sessions.map(s=>fmtDateShort(s.date));
-      const actual = sessions.map(s=>entryFor(s.bl.id).power);
+      const actual = sessions.map(s=>entryFor(s.bl.id).intervalPower);
       const maxArr = sessions.map(s=>s.bl.power[1]);
       const minArr = sessions.map(s=>s.bl.power[0]);
       const last = actual[actual.length-1];
@@ -1163,16 +1164,16 @@
 
   function renderDetailCharts(){
     let structured = [];
-    forEachEntry((bl)=>{ const e=entryFor(bl.id); if(bl.power && isDone(bl.id) && e.power!=null){ if(!activeFilter || bl.tag===activeFilter) structured.push({bl,date:e.date?parseISODate(e.date):new Date(e.loggedAt||Date.now())}); } });
+    forEachEntry((bl)=>{ const e=entryFor(bl.id); if(bl.power && isDone(bl.id) && e.intervalPower!=null){ if(!activeFilter || bl.tag===activeFilter) structured.push({bl,date:e.date?parseISODate(e.date):new Date(e.loggedAt||Date.now())}); } });
     structured.sort((a,b)=>a.date-b.date);
-    if(structured.length===0){ document.getElementById('deviationWrap').innerHTML = '<div class="chart-empty">Noch keine Watt-Werte zu strukturierten Einheiten geloggt.</div>'; }
+    if(structured.length===0){ document.getElementById('deviationWrap').innerHTML = '<div class="chart-empty">Noch keine Intervall-Watt zu strukturierten Einheiten geloggt.</div>'; }
     else {
       document.getElementById('deviationWrap').innerHTML = '<canvas id="deviationChart"></canvas>';
       const labels = structured.map(s=>fmtDateShort(s.date)+' '+TAG_META[s.bl.tag].label);
-      const deviations = structured.map(s=>{ const p=entryFor(s.bl.id).power; const mid=(s.bl.power[0]+s.bl.power[1])/2; return +(p-mid).toFixed(1); });
-      const colors = structured.map(s=>{ const p=entryFor(s.bl.id).power; if(p<s.bl.power[0]) return '#6FB4DB'; if(p>s.bl.power[1]) return '#E4713F'; return '#5FCB93'; });
+      const deviations = structured.map(s=>{ const p=entryFor(s.bl.id).intervalPower; const mid=(s.bl.power[0]+s.bl.power[1])/2; return +(p-mid).toFixed(1); });
+      const colors = structured.map(s=>{ const p=entryFor(s.bl.id).intervalPower; if(p<s.bl.power[0]) return '#6FB4DB'; if(p>s.bl.power[1]) return '#E4713F'; return '#5FCB93'; });
       charts.deviation = new Chart(document.getElementById('deviationChart'), {
-        type:'bar', data:{ labels, datasets:[{label:'Abw. von Zielmitte (W)', data:deviations, backgroundColor:colors}] },
+        type:'bar', data:{ labels, datasets:[{label:'Intervall-Ø: Abw. von Zielmitte (W)', data:deviations, backgroundColor:colors}] },
         options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ticks:{maxRotation:60,minRotation:40}, grid:{display:false}}, y:{grid:{color:gridColor}} } }
       });
     }
@@ -1342,6 +1343,7 @@
       if(!e.loggedAt) e.loggedAt = new Date().toISOString();
       if(act.avgWatts!=null) e.power = act.avgWatts;
       if(act.np!=null) e.np = act.np;
+      if(act.intervalWatts!=null) e.intervalPower = act.intervalWatts;
       if(act.durationMin!=null) e.durationMin = act.durationMin;
       if(act.distanceKm!=null) e.distanceKm = act.distanceKm;
       if(act.elevationM!=null) e.elevationM = act.elevationM;
