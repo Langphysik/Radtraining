@@ -7,6 +7,8 @@
   const RR_MAX_MS = 2000;
   const MEDIAN_HALF_WINDOW = 2;      // zentriert: 2 Schläge davor, Schlag selbst, 2 danach
   const MEDIAN_MAX_DEVIATION = 0.2;
+  const PAIR_MIN_DEVIATION = 0.1;    // zu früher Schlag: ein RR 10 % kürzer, der nächste 10 % länger ...
+  const PAIR_SUM_TOLERANCE = 0.1;    // ... und zusammen rund zwei normale RR
   const CLOCK_GAP_MS = 2000;         // größere Abweichung zur Ankunftszeit gilt als Signalabriss
   const CLOCK_CORRECTION = 0.05;     // BLE-Latenz nur langsam in die Schlag-Zeitachse einrechnen
   const BACKLOG_MERGE_MS = 1500;     // Nachlieferung schließt die Lücke, wenn weniger als das offen bleibt
@@ -59,6 +61,16 @@
     const sorted = values.slice().sort((a, b) => a - b);
     const mid = sorted.length >> 1;
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  /* Ein einzelner verschobener Schlag ergibt kurz + lang (oder umgekehrt), zusammen
+     rund zwei normale RR. Das stört RMSSD und RSA auch unter der 20-%-Grenze.
+     Echte RSA ändert sich dafür von Schlag zu Schlag zu langsam. */
+  function isDisplacedPair(a, b, reference){
+    const shorter = Math.min(a, b), longer = Math.max(a, b);
+    return shorter < reference * (1 - PAIR_MIN_DEVIATION) &&
+      longer > reference * (1 + PAIR_MIN_DEVIATION) &&
+      Math.abs(a + b - 2 * reference) / (2 * reference) < PAIR_SUM_TOLERANCE;
   }
 
   /* Beat: {t, rr, status, afterGap}
@@ -143,8 +155,12 @@
         if(!flush && after.length < MEDIAN_HALF_WINDOW) break;
         const windowValues = this._before.concat(head.rr, after);
         const reference = median(windowValues);
+        const previous = this._before[this._before.length - 1];
+        const inPair = windowValues.length >= 3 && (
+          (previous !== undefined && isDisplacedPair(previous, head.rr, reference)) ||
+          (after.length > 0 && isDisplacedPair(head.rr, after[0], reference)));
         const isArtefact = (windowValues.length >= 3 &&
-          Math.abs(head.rr - reference) / reference > MEDIAN_MAX_DEVIATION) || this._outOfContext(head.rr);
+          Math.abs(head.rr - reference) / reference > MEDIAN_MAX_DEVIATION) || inPair || this._outOfContext(head.rr);
         head.status = isArtefact ? 'median' : 'ok';
         if(!isArtefact){
           this._recentOk.push(head.rr);
@@ -216,9 +232,13 @@
     return rate <= 0.05 ? 'mäßig' : 'schlecht';
   }
 
-  /* HFmax − HFmin eines Zyklus aus der momentanen HF sauberer Schläge. */
+  /* HFmax − HFmin eines Zyklus aus der momentanen HF sauberer Schläge.
+     Max − Min hängt an einem einzigen Wert: Zyklen mit Artefakt zählen nicht,
+     weil auch ihre "sauberen" Schläge oft noch gestört sind. */
   function rsaAmplitude(beats, startMs, endMs){
-    const hrs = beatsBetween(beats, startMs, endMs)
+    const segment = beatsBetween(beats, startMs, endMs);
+    if(segment.some(b => b.status === 'range' || b.status === 'median')) return null;
+    const hrs = segment
       .filter(b => b.status === 'ok')
       .map(b => 60000 / b.rr);
     if(hrs.length < RSA_MIN_BEATS) return null;

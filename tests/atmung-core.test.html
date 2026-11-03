@@ -103,6 +103,28 @@
   });
   function Core_ok(p){ return p.beats.filter(b => b.status === 'ok').length; }
 
+  test('Filter: milder verschobener Schlag unter der 20-%-Grenze wird erkannt', () => {
+    const p = feed([960, 965, 970, 965, 960, 812, 1130, 965, 970, 960, 965, 970]);
+    p.finish();
+    eq(p.beats[5].status, 'median'); eq(p.beats[6].status, 'median');
+    eq(p.beats[4].status, 'ok'); eq(p.beats[7].status, 'ok');
+  });
+  test('Filter: verspäteter Schlag (lang + kurz) wird ebenso erkannt', () => {
+    const p = feed([960, 965, 970, 965, 960, 1130, 812, 965, 970, 960, 965, 970]);
+    p.finish();
+    eq(p.beats[5].status, 'median'); eq(p.beats[6].status, 'median');
+  });
+  test('Filter: mehrere verschobene Schläge in Folge', () => {
+    const p = feed([960, 965, 970, 965, 782, 1158, 812, 1149, 962, 979, 971, 973]);
+    p.finish();
+    [4, 5, 6, 7].forEach(i => eq(p.beats[i].status, 'median', 'Schlag ' + i));
+    eq(p.beats[8].status, 'ok');
+  });
+  test('Filter: stetige RSA-Bewegung gilt nicht als verschobener Schlag', () => {
+    const p = feed([788, 791, 820, 840, 861, 886, 900, 910, 905, 894, 877, 867, 859, 854, 856, 858, 867, 885]);
+    p.finish();
+    eq(p.beats.filter(b => b.status !== 'ok').length, 0);
+  });
   test('Filter: Störphase wie beim Ablegen des Gurts bleibt nicht als ok stehen', () => {
     const rest = Array.from({length:40}, (_, i) => 900 + (i % 3) * 5);
     // Abfolge aus einer realen Aufzeichnung: 312 liegt nah am gestörten Fenster-Median
@@ -210,7 +232,17 @@
     eq(stats.total, 4); eq(stats.artefacts, 2); eq(stats.rate, 0.5); eq(stats.quality, 'schlecht');
   });
   test('RSA: HFmax − HFmin im Zyklus', () => {
-    const beats = [{t:1, rr:1000, status:'ok'}, {t:2, rr:750, status:'ok'}, {t:3, rr:600, status:'ok'}, {t:4, rr:400, status:'median'}, {t:20, rr:300, status:'ok'}];
+    const beats = [{t:1, rr:1000, status:'ok'}, {t:2, rr:750, status:'ok'}, {t:3, rr:600, status:'ok'}, {t:20, rr:300, status:'ok'}];
+    near(C.rsaAmplitude(beats, 0, 10), 40, 1e-9);
+  });
+  test('RSA: Zyklus mit Artefakt wird nicht gewertet', () => {
+    const beats = [{t:1, rr:1000, status:'ok'}, {t:2, rr:750, status:'ok'}, {t:3, rr:600, status:'ok'}, {t:4, rr:400, status:'median'},
+      {t:11, rr:1000, status:'ok'}, {t:12, rr:900, status:'ok'}, {t:13, rr:800, status:'ok'}];
+    const s = C.rsaSummary(beats, [{start:0, end:10}, {start:10, end:20}]);
+    eq(s.perCycle[0], null); near(s.perCycle[1], 15, 1e-9); near(s.mean, 15, 1e-9);
+  });
+  test('RSA: noch ungeprüfte Schläge schließen einen Zyklus nicht aus', () => {
+    const beats = [{t:1, rr:1000, status:'ok'}, {t:2, rr:750, status:'ok'}, {t:3, rr:600, status:'ok'}, {t:4, rr:400, status:'pending'}];
     near(C.rsaAmplitude(beats, 0, 10), 40, 1e-9);
   });
   test('RSA: zu wenige Schläge ergeben null und zählen nicht im Mittel', () => {
