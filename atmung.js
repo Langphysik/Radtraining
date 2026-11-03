@@ -43,6 +43,7 @@
     error: null,
     hr: null,
     lastPacketHex: null,
+    visibilityLog: [],
     pipeline: new Core.SignalPipeline(),
     listeners: new Set(),
     notify(){ this.listeners.forEach(fn => fn()); },
@@ -51,6 +52,7 @@
       this.pipeline = new Core.SignalPipeline();
       this.hr = null;
       this.lastPacketHex = null;
+      this.visibilityLog = [];
       this.notify();
     },
     handlePacket(view){
@@ -63,6 +65,10 @@
       this.notify();
     }
   };
+
+  document.addEventListener('visibilitychange', () => {
+    signal.visibilityLog.push({t:Math.round(performance.now()), state:document.visibilityState});
+  });
 
   const ble = {
     device: null,
@@ -264,6 +270,7 @@
         device: signal.deviceName,
         packets: pipeline.packets,
         packetsWithoutRr: pipeline.packetsWithoutRr,
+        visibility: signal.visibilityLog,
         beats: pipeline.beats.map(b => ({t:Math.round(b.t), rr:Math.round(b.rr * 100) / 100, status:b.status, afterGap:b.afterGap}))
       }, 'atmung-signal-' + RT.toISODate(new Date()) + '.json');
     });

@@ -9,6 +9,12 @@
   const MEDIAN_MAX_DEVIATION = 0.2;
   const CLOCK_GAP_MS = 2000;         // größere Abweichung zur Ankunftszeit gilt als Signalabriss
   const CLOCK_CORRECTION = 0.05;     // BLE-Latenz nur langsam in die Schlag-Zeitachse einrechnen
+  const BACKLOG_MERGE_MS = 1500;     // Nachlieferung schließt die Lücke, wenn weniger als das offen bleibt
+  const BACKLOG_AHEAD_MS = 500;      // direkt nach einem möglichen Abriss zählt schon kleiner Vorlauf als Nachlieferung
+  const CONTEXT_HISTORY = 30;        // saubere Schläge als langfristige Referenz
+  const CONTEXT_MIN_BEATS = 5;
+  const CONTEXT_MAX_DEVIATION = 0.4;
+  const CONTEXT_MAX_REJECTS = 10;    // danach gilt die Referenz als veraltet, z. B. nach echtem HF-Wechsel
   const RSA_MIN_BEATS = 3;
 
   /* ---------- BLE-Characteristic 0x2A37 ---------- */
@@ -59,7 +65,12 @@
      t = Ende des RR-Intervalls in der Zeitbasis von arrivalMs.
      status: 'pending' (wartet auf die 2 Folgeschläge), 'ok', 'range', 'median'.
      Der Status eines Beats wird nachträglich im selben Objekt gesetzt: Die
-     Live-Kurve kann so sofort zeichnen, Kennwerte zählen nur 'ok'. */
+     Live-Kurve kann so sofort zeichnen, Kennwerte zählen nur 'ok'.
+
+     Nach einer Pause können die aufgestauten Pakete praktisch gleichzeitig
+     eintreffen. Das erste wirkt wie ein Abriss, die folgenden laufen der Uhr
+     davon. Das Segment wird dann so zurückgeschoben, dass sein letzter Schlag
+     zur Ankunftszeit passt. Schließt es dabei die Lücke, war es kein Abriss. */
   class SignalPipeline {
     constructor(){
       this.beats = [];
@@ -69,6 +80,10 @@
       this._cursor = 0;
       this._before = [];
       this._clock = null;
+      this._segmentStart = 0;
+      this._previousSegmentEnd = null;
+      this._recentOk = [];
+      this._contextRejects = 0;
     }
 
     ingest(rrMs, arrivalMs){
@@ -76,9 +91,11 @@
       if(!rrMs.length){ this.packetsWithoutRr++; return []; }
       const total = rrMs.reduce((sum, rr) => sum + rr, 0);
       let afterGap = false;
-      if(this._clock !== null && Math.abs(arrivalMs - (this._clock + total)) > CLOCK_GAP_MS){
+      if(this._clock !== null && arrivalMs - (this._clock + total) > CLOCK_GAP_MS){
         this._evaluate(true);
         this._before = [];
+        this._previousSegmentEnd = this._clock;
+        this._segmentStart = this.beats.length;
         this._clock = null;
         this.gaps++;
         afterGap = true;
@@ -90,9 +107,25 @@
         return {t, rr, status: inRange ? 'pending' : 'range', afterGap: afterGap && i === 0};
       });
       this.beats.push(...added);
+      const aheadLimit = this.beats[this._segmentStart].afterGap ? BACKLOG_AHEAD_MS : CLOCK_GAP_MS;
+      if(t - arrivalMs > aheadLimit) t -= this._pullSegmentBack(t - arrivalMs);
       this._clock = t + (arrivalMs - t) * CLOCK_CORRECTION;
       this._evaluate(false);
       return added;
+    }
+
+    /* Liefert die tatsächliche Verschiebung; das Segment überlappt nie sein Vorgängersegment. */
+    _pullSegmentBack(aheadMs){
+      const first = this.beats[this._segmentStart];
+      const previousEnd = this._previousSegmentEnd;
+      const room = previousEnd === null ? aheadMs : first.t - first.rr - previousEnd;
+      const shift = Math.max(0, Math.min(aheadMs, room));
+      for(let i = this._segmentStart; i < this.beats.length; i++) this.beats[i].t -= shift;
+      if(first.afterGap && room - shift < BACKLOG_MERGE_MS){
+        first.afterGap = false;
+        this.gaps--;
+      }
+      return shift;
     }
 
     /* Bewertet die letzten noch offenen Schläge mit verkürztem Fenster. */
@@ -110,13 +143,35 @@
         if(!flush && after.length < MEDIAN_HALF_WINDOW) break;
         const windowValues = this._before.concat(head.rr, after);
         const reference = median(windowValues);
-        const isArtefact = windowValues.length >= 3 &&
-          Math.abs(head.rr - reference) / reference > MEDIAN_MAX_DEVIATION;
+        const isArtefact = (windowValues.length >= 3 &&
+          Math.abs(head.rr - reference) / reference > MEDIAN_MAX_DEVIATION) || this._outOfContext(head.rr);
         head.status = isArtefact ? 'median' : 'ok';
+        if(!isArtefact){
+          this._recentOk.push(head.rr);
+          if(this._recentOk.length > CONTEXT_HISTORY) this._recentOk.shift();
+        }
         this._before.push(head.rr);
         if(this._before.length > MEDIAN_HALF_WINDOW) this._before.shift();
         this._cursor++;
       }
+    }
+
+    /* In einer Störphase ist das ganze 5er-Fenster gestört und der Median taugt
+       nicht als Referenz. Grobe Abweichungen vom längerfristigen Niveau fallen
+       trotzdem auf. */
+    _outOfContext(rr){
+      if(this._recentOk.length < CONTEXT_MIN_BEATS) return false;
+      const level = median(this._recentOk);
+      if(Math.abs(rr - level) / level <= CONTEXT_MAX_DEVIATION){
+        this._contextRejects = 0;
+        return false;
+      }
+      this._contextRejects++;
+      if(this._contextRejects >= CONTEXT_MAX_REJECTS){
+        this._recentOk = [];
+        this._contextRejects = 0;
+      }
+      return true;
     }
   }
 

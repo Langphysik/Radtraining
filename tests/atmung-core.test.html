@@ -103,6 +103,21 @@
   });
   function Core_ok(p){ return p.beats.filter(b => b.status === 'ok').length; }
 
+  test('Filter: Störphase wie beim Ablegen des Gurts bleibt nicht als ok stehen', () => {
+    const rest = Array.from({length:40}, (_, i) => 900 + (i % 3) * 5);
+    // Abfolge aus einer realen Aufzeichnung: 312 liegt nah am gestörten Fenster-Median
+    const noise = [421, 1150, 991, 387, 312, 595, 349];
+    const p = feed(rest.concat(noise, rest));
+    p.finish();
+    p.beats.slice(40, 47).forEach(b => { if(b.status === 'ok' && (b.rr < 500 || b.rr > 1300)) throw new Error('RR ' + b.rr + ' gilt als ok'); });
+    eq(p.beats[p.beats.length - 1].status, 'ok');
+  });
+  test('Filter: echter dauerhafter HF-Wechsel sperrt die Erkennung nicht aus', () => {
+    const p = feed(Array(30).fill(1000).concat(Array(40).fill(450)));
+    p.finish();
+    eq(p.beats[p.beats.length - 5].status, 'ok');
+  });
+
   /* Vergleich: nachlaufender Median der letzten 5 (Auftrag) gegen zentrierten Median */
   function trailingFlags(values){
     const valid = [];
@@ -229,6 +244,34 @@
     eq(p.gaps, 0);
     for(let i = 1; i < p.beats.length; i++){ if(p.beats[i].t <= p.beats[i - 1].t) throw new Error('nicht monoton bei ' + i); }
     near(p.beats[p.beats.length - 1].t, truth, 400);
+  });
+  function backlogRun(pauseMs, backlogBeats){
+    const p = new C.SignalPipeline();
+    let now = 0;
+    for(let i = 0; i < 20; i++){ now += 900; p.ingest([900 + (i % 2) * 10], now); }
+    now += pauseMs;
+    for(let i = 0; i < backlogBeats; i++){ p.ingest([900 + (i % 2) * 10], now + i); }
+    return {p, now, before:20};
+  }
+  test('Nachlieferung: lückenlos aufgestaute Schläge sind kein Abriss', () => {
+    const {p, now, before} = backlogRun(63000, 70);
+    eq(p.gaps, 0);
+    eq(p.beats.filter(b => b.afterGap).length, 0);
+    for(let i = 1; i < p.beats.length; i++){ if(p.beats[i].t <= p.beats[i - 1].t) throw new Error('nicht monoton bei ' + i); }
+    near(p.beats[before].t - p.beats[before - 1].t, 900, 1500, 'Übergang');
+    near(p.beats[p.beats.length - 1].t, now, 2500, 'Ende');
+  });
+  test('Nachlieferung: unvollständige Daten bleiben ein Abriss', () => {
+    const {p} = backlogRun(48000, 9);
+    eq(p.gaps, 1);
+    eq(p.beats.filter(b => b.afterGap).length, 1);
+    for(let i = 1; i < p.beats.length; i++){ if(p.beats[i].t <= p.beats[i - 1].t) throw new Error('nicht monoton bei ' + i); }
+  });
+  test('Nachlieferung: RMSSD nutzt auch die nachgelieferten Paare', () => {
+    const {p} = backlogRun(63000, 70);
+    p.finish();
+    eq(p.beats.filter(b => b.status === 'ok').length, 90);
+    near(C.rmssd(p.beats), 10, 1e-9);
   });
   test('Zeitachse: Paket ohne RR zählt, erzeugt aber keinen Schlag', () => {
     const p = new C.SignalPipeline();
