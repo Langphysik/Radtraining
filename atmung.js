@@ -10,6 +10,10 @@
   const SETTINGS_KEY = 'atem:settings';
   const SESSIONS_KEY = 'atem:sessions';
   const RR_KEY_PREFIX = 'atem:rr:';
+  const RF_RESULTS_KEY = 'atem:rf-results';
+  const PLANS_KEY = 'atem:plans';
+  const ACTIVE_PLAN_KEY = 'atem:active-plan';
+  const HARD_TRAINING_TAGS = ['threshold', 'vo2max'];
   const SIM_PROFILES = {
     normal: {label:'Normal (900 ± 60 ms)', meanRr:900, amplitude:60},
     stark: {label:'Starke RSA (1030 ± 170 ms)', meanRr:1030, amplitude:170}
@@ -192,7 +196,7 @@
       this.schedule();
     },
 
-    setBreathHz(hz){ if(this.generator) this.generator.setBreathHz(hz); },
+    setBreathHz(hz, scale){ if(this.generator) this.generator.setBreathHz(hz, scale); },
 
     schedule(){
       const {rr} = this.generator.next();
@@ -330,7 +334,7 @@
       .map(key => '<option value="' + key + '">' + RT.escapeHtml(SIM_PROFILES[key].label) + '</option>').join('');
     return '<div class="atem-card">' +
         '<div class="atem-status-line"><span class="atem-dot" id="atemConnDot"></span><strong id="atemConnState"></strong><span class="atem-muted" id="atemConnDetail"></span></div>' +
-        '<p class="atem-hint">Der Sigma-Gurt erlaubt nur eine BLE-Verbindung. Trenne vorher die Sigma-App und den Radcomputer.</p>' +
+        '<p class="atem-hint">Der Sigma-Gurt erlaubt nur eine BLE-Verbindung. Trenne vorher die Sigma-App und den Radcomputer. Befeuchte die Elektroden und leg den Gurt straff an: Das macht für saubere Werte den größten Unterschied.</p>' +
         '<div class="atem-actions">' +
           '<button class="atem-btn primary" id="atemConnect">Gurt verbinden</button>' +
           '<button class="atem-btn" id="atemReconnect">Neu verbinden</button>' +
@@ -594,74 +598,305 @@
     return hour >= EVENING_FROM_HOUR || hour < EVENING_UNTIL_HOUR;
   }
 
-  /* ---------- Session ---------- */
-  function renderSessionView(root){
+  /* ---------- Formularbausteine ---------- */
+  function scaleHtml(id, label){
+    let chips = '';
+    for(let value = 0; value <= 10; value++){
+      chips += '<button type="button" class="atem-chip" data-value="' + value + '" aria-pressed="false">' + value + '</button>';
+    }
+    return '<div class="atem-scale" id="' + id + '" role="group" aria-label="' + label + '">' + chips + '</div>';
+  }
+  function bindScale(id, onChange){
+    const group = document.getElementById(id);
+    group.addEventListener('click', event => {
+      const chip = event.target.closest('.atem-chip');
+      if(!chip) return;
+      const wasActive = chip.getAttribute('aria-pressed') === 'true';
+      group.querySelectorAll('.atem-chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
+      if(!wasActive) chip.setAttribute('aria-pressed', 'true');
+      onChange(wasActive ? null : Number(chip.dataset.value));
+    });
+  }
+  function optionsHtml(items, selected){
+    return items.map(item => '<option value="' + item.value + '"' + (String(item.value) === String(selected) ? ' selected' : '') + '>' + item.label + '</option>').join('');
+  }
+  function checkHtml(id, label, checked){
+    return '<label class="atem-check"><input type="checkbox" id="' + id + '"' + (checked ? ' checked' : '') + '><span>' + label + '</span></label>';
+  }
+  function fmtIsoDate(iso){
+    const [year, month, day] = iso.split('-');
+    return day + '.' + month + '.' + year;
+  }
+  function todayIso(){ return RT.toISODate(new Date()); }
+  function saveSetting(key, value){ settings[key] = value; saveSettings(); }
+
+  /* Karte mit Ton, Vibration, Feedback und Abendmodus; onEvening reagiert auf den Moduswechsel. */
+  function cueOptionsHtml(withRr){
+    return foldableCard('Anzeige und Hinweise <span class="atem-fold-note" id="atemCueNote"></span>', true,
+      '<div class="atem-checks">' +
+        checkHtml('atemTone', 'Leiser Ton am Phasenwechsel', settings.tone) +
+        checkHtml('atemVibrate', navigator.vibrate ? 'Vibration am Phasenwechsel' : 'Vibration (auf diesem Gerät nicht verfügbar)', settings.vibrate && !!navigator.vibrate) +
+        checkHtml('atemFeedback', 'Live-Feedback anzeigen', settings.showFeedback) +
+        (withRr ? checkHtml('atemKeepRr', 'RR-Rohdaten speichern (rund 8 KB je 20 min)', settings.keepRr) : '') +
+      '</div>' +
+      '<p class="atem-hint">Beim Einschalten kommt sofort ein Probehinweis. Der Ton folgt der Medienlautstärke des Handys.</p>' +
+      '<label class="atem-field atem-field-wide"><span>Abendmodus</span><select class="atem-select" id="atemEvening">' +
+        optionsHtml([{value:'auto', label:'Automatisch ab 19 Uhr'}, {value:'an', label:'An'}, {value:'aus', label:'Aus'}], settings.eveningMode) +
+      '</select></label>');
+  }
+  function bindCueOptions(applyEvening){
     const byId = id => document.getElementById(id);
-    let run = null;
-    let pending = null;   // abgeschlossene, noch nicht gespeicherte Session
-    let tensionBefore = null;
+    function updateCueNote(){
+      byId('atemCueNote').textContent = '· Ton ' + (settings.tone ? 'an' : 'aus') + ', Vibration ' + (settings.vibrate ? 'an' : 'aus');
+    }
+    byId('atemVibrate').disabled = !navigator.vibrate;
+    byId('atemTone').addEventListener('change', e => {
+      saveSetting('tone', e.target.checked);
+      updateCueNote();
+      if(e.target.checked) cues.tone(660, 0.4, 0.18);
+    });
+    byId('atemVibrate').addEventListener('change', e => {
+      saveSetting('vibrate', e.target.checked);
+      updateCueNote();
+      if(e.target.checked) cues.vibrate(150);
+    });
+    byId('atemFeedback').addEventListener('change', e => saveSetting('showFeedback', e.target.checked));
+    if(byId('atemKeepRr')) byId('atemKeepRr').addEventListener('change', e => saveSetting('keepRr', e.target.checked));
+    byId('atemEvening').addEventListener('change', e => { saveSetting('eveningMode', e.target.value); applyEvening(); });
+    updateCueNote();
+  }
+
+  /* ---------- Pacer-Lauf (Session und Resonanzfrequenz-Test) ----------
+     Schritt: {label, kind:'pacer'|'rest', durationMs, pattern?, nextLabel, restLabel?}.
+     onFinish erhält {ranges, hiddenMs}; ranges[i] ist null bei nie gestartetem Schritt. */
+  function createStepRunner({root, steps, measuring, onFinish}){
+    const byId = id => document.getElementById(id);
+    let index = -1;
+    let stepStart = 0;
+    let lastPhaseKey = null;
+    let hiddenMs = 0;
+    let hiddenSince = document.visibilityState === 'hidden' ? performance.now() : null;
+    let tickCount = 0;
+    let active = true;
     let frameHandle = null;
     let tickTimer = null;
+    const ranges = steps.map(() => null);
+
+    function trackVisibility(){
+      const now = performance.now();
+      if(document.visibilityState === 'hidden') hiddenSince = now;
+      else if(hiddenSince !== null){
+        hiddenMs += now - hiddenSince;
+        hiddenSince = null;
+      }
+      updateHints();
+    }
+
+    function updateHints(){
+      if(!active) return;
+      byId('atemRunLost').hidden = !(measuring && signal.status === 'unterbrochen');
+      byId('atemRunWake').hidden = !wakeLock.failed;
+      byId('atemRunHidden').hidden = hiddenMs < 1000;
+    }
+
+    function updateFeedbackVisibility(){
+      byId('atemRunFeedback').hidden = !(measuring && settings.showFeedback);
+      byId('atemRunToggle').hidden = !measuring;
+      byId('atemRunToggle').textContent = settings.showFeedback ? 'Feedback ausblenden' : 'Feedback einblenden';
+    }
+
+    function enterStep(next){
+      const now = performance.now();
+      if(index >= 0) ranges[index] = {start:stepStart, end:now};
+      if(next >= steps.length){ finish(); return; }
+      if(index >= 0) cues.step();
+      index = next;
+      stepStart = now;
+      lastPhaseKey = null;
+      const step = steps[index];
+      if(step.kind === 'pacer') sim.setBreathHz(step.pattern.bpm / 60, simAmplitudeScale(step.pattern.bpm));
+      else sim.setBreathHz(0.25, 0.6);
+      byId('atemRunStep').textContent = step.label;
+      byId('atemRunNext').textContent = step.nextLabel;
+      if(step.kind !== 'pacer'){
+        byId('atemPacerLabel').textContent = step.restLabel || 'Normal atmen';
+        byId('atemPacerCircle').dataset.kind = 'rest';
+      }
+    }
+
+    function tick(){
+      if(!active) return;
+      const now = performance.now();
+      const step = steps[index];
+      const elapsed = now - stepStart;
+      if(elapsed >= step.durationMs){ enterStep(index + 1); return; }
+      byId('atemRunCountdown').textContent = fmtCountdown(step.durationMs - elapsed);
+      if(step.kind === 'pacer'){
+        const state = Core.pacerState(step.pattern, elapsed);
+        const key = state.cycleIndex + ':' + state.phaseIndex;
+        if(key !== lastPhaseKey){
+          lastPhaseKey = key;
+          cues.phase(state.kind);
+          byId('atemPacerLabel').textContent = state.label;
+          byId('atemPacerCircle').dataset.kind = state.kind;
+        }
+      }
+      tickCount++;
+      if(measuring && settings.showFeedback){
+        if(tickCount % 3 === 0) redrawCurve(now);
+        if(tickCount % 10 === 0) updateRsa(now);
+      }
+    }
+
+    /* Rein zeitbasiert: Nach einer Verzögerung springt der Kreis an die richtige Stelle. */
+    function frame(){
+      if(!active) return;
+      const step = steps[index];
+      const level = step.kind === 'pacer' ? Core.pacerState(step.pattern, performance.now() - stepStart).level : 0.35;
+      byId('atemPacerCircle').style.transform = 'scale(' + (0.42 + 0.58 * level).toFixed(4) + ')';
+      frameHandle = requestAnimationFrame(frame);
+    }
+
+    function pacerRange(i, now){
+      return i === index ? {start:stepStart, end:now} : ranges[i];
+    }
+
+    function redrawCurve(now){
+      const from = now - CURVE_SPAN_MS;
+      let bands = [];
+      steps.forEach((step, i) => {
+        const range = step.kind === 'pacer' ? pacerRange(i, now) : null;
+        if(range && range.end > from) bands = bands.concat(Core.pacerBands(step.pattern, range.start, from, range.end));
+      });
+      drawHeartRateCurve(byId('atemRunCurve'), signal.pipeline.beats, now, bands);
+    }
+
+    function updateRsa(now){
+      let i = index;
+      while(i >= 0 && steps[i].kind !== 'pacer') i--;
+      if(i < 0) return;
+      const range = pacerRange(i, now);
+      const end = i === index ? now - RSA_EVALUATION_DELAY_MS : range.end;
+      const cycles = Core.pacerCycles(steps[i].pattern, range.start, end).slice(-RSA_TREND_CYCLES);
+      const summary = Core.rsaSummary(signal.pipeline.beats.slice(-400), cycles);
+      byId('atemRunRsa').textContent = summary.last === null ? '–' : fmt(summary.last, 1) + ' bpm';
+      drawSparkline(byId('atemRunSpark'), summary.perCycle.filter(v => v !== null));
+    }
+
+    function teardown(){
+      if(!active) return;
+      active = false;
+      clearInterval(tickTimer);
+      cancelAnimationFrame(frameHandle);
+      wakeLock.onChange = null;
+      wakeLock.release();
+      signal.listeners.delete(updateHints);
+      document.removeEventListener('visibilitychange', trackVisibility);
+      viewEl.classList.remove('atem-running');
+    }
+
+    function finish(){
+      if(hiddenSince !== null) hiddenMs += performance.now() - hiddenSince;
+      teardown();
+      if(measuring) signal.pipeline.finish();
+      onFinish({ranges, hiddenMs});
+    }
+
+    viewEl.classList.add('atem-running');
+    viewEl.scrollTop = 0;
+    root.innerHTML =
+      '<div class="atem-run">' +
+        '<div class="atem-run-head"><span id="atemRunStep"></span><span class="mono" id="atemRunCountdown"></span></div>' +
+        '<div class="atem-pacer">' +
+          '<div class="atem-pacer-circle" id="atemPacerCircle"></div>' +
+          '<div class="atem-pacer-label" id="atemPacerLabel" aria-live="polite"></div>' +
+        '</div>' +
+        '<div class="atem-card atem-warning" id="atemRunLost" role="alert" hidden>' +
+          '<p class="atem-hint">Gurtverbindung unterbrochen. Der Pacer läuft weiter.</p>' +
+          '<button class="atem-btn" id="atemRunReconnect">Neu verbinden</button>' +
+        '</div>' +
+        '<p class="atem-hint" id="atemRunWake" hidden>Der Bildschirm konnte nicht angehalten werden. Stelle das Bildschirm-Timeout hoch genug ein.</p>' +
+        '<p class="atem-hint" id="atemRunHidden" hidden>Der Bildschirm war zwischendurch aus. Dabei können Pacer und Hinweise ausgesetzt haben.</p>' +
+        '<div class="atem-card" id="atemRunFeedback">' +
+          '<canvas class="atem-curve atem-curve-small" id="atemRunCurve"></canvas>' +
+          '<div class="atem-rsa-row"><div><div class="atem-rsa-value" id="atemRunRsa">–</div><div class="atem-rsa-label">RSA letzter Atemzyklus</div></div>' +
+          '<canvas class="atem-spark" id="atemRunSpark"></canvas></div>' +
+        '</div>' +
+        '<div class="atem-actions atem-run-actions">' +
+          '<button class="atem-btn" id="atemRunToggle"></button>' +
+          '<button class="atem-btn" id="atemRunNext"></button>' +
+        '</div>' +
+      '</div>';
+    byId('atemRunNext').addEventListener('click', () => enterStep(index + 1));
+    byId('atemRunReconnect').addEventListener('click', () => ble.open());
+    byId('atemRunToggle').addEventListener('click', () => {
+      saveSetting('showFeedback', !settings.showFeedback);
+      updateFeedbackVisibility();
+    });
+    updateFeedbackVisibility();
+    wakeLock.onChange = updateHints;
+    wakeLock.acquire();
+    signal.listeners.add(updateHints);
+    document.addEventListener('visibilitychange', trackVisibility);
+    updateHints();
+    enterStep(0);
+    tickTimer = setInterval(tick, 100);
+    frameHandle = requestAnimationFrame(frame);
+
+    return {stop: teardown, isActive: () => active};
+  }
+
+  /* Der Simulator zeigt eine Resonanz bei 5,5/min, damit der Test etwas zu vergleichen hat. */
+  function simAmplitudeScale(bpm){
+    return Math.exp(-Math.pow((bpm - 5.5) / 1.2, 2));
+  }
+
+  /* ---------- Session ----------
+     preset (optional): {technik, bpm, ie, durationMin, planId, unitId, title, hinweis} */
+  function renderSessionView(root, preset){
+    const byId = id => document.getElementById(id);
+    let runner = null;
+    let pending = null;   // abgeschlossene, noch nicht gespeicherte Session
+    let tensionBefore = null;
     let detachSetup = null;
+    let activePreset = preset;
 
     function applyEvening(){ viewEl.classList.toggle('atem-evening', eveningActive()); }
-    function saveSetting(key, value){ settings[key] = value; saveSettings(); }
-
-    function scaleHtml(id, label){
-      let chips = '';
-      for(let value = 0; value <= 10; value++){
-        chips += '<button type="button" class="atem-chip" data-value="' + value + '" aria-pressed="false">' + value + '</button>';
-      }
-      return '<div class="atem-scale" id="' + id + '" role="group" aria-label="' + label + '">' + chips + '</div>';
-    }
-    function bindScale(id, onChange){
-      const group = byId(id);
-      group.addEventListener('click', event => {
-        const chip = event.target.closest('.atem-chip');
-        if(!chip) return;
-        const wasActive = chip.getAttribute('aria-pressed') === 'true';
-        group.querySelectorAll('.atem-chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
-        if(!wasActive) chip.setAttribute('aria-pressed', 'true');
-        onChange(wasActive ? null : Number(chip.dataset.value));
-      });
-    }
-    function optionsHtml(items, selected){
-      return items.map(item => '<option value="' + item.value + '"' + (String(item.value) === String(selected) ? ' selected' : '') + '>' + item.label + '</option>').join('');
-    }
-    function checkHtml(id, label, checked){
-      return '<label class="atem-check"><input type="checkbox" id="' + id + '"' + (checked ? ' checked' : '') + '><span>' + label + '</span></label>';
-    }
 
     /* ----- Vorbereitung ----- */
     function showSetup(){
       viewEl.classList.remove('atem-running');
       applyEvening();
       tensionBefore = null;
+      const draft = activePreset
+        ? {technik:activePreset.technik, bpm:activePreset.bpm, ie:activePreset.ie, durationMin:activePreset.durationMin}
+        : {technik:'spb', bpm:settings.bpm, ie:settings.ie, durationMin:settings.durationMin};
+      const durations = SESSION_MINUTES.includes(draft.durationMin)
+        ? SESSION_MINUTES
+        : SESSION_MINUTES.concat(draft.durationMin).sort((a, b) => a - b);
+      const isSigh = draft.technik === 'sigh';
+
       root.innerHTML =
+        (activePreset
+          ? '<div class="atem-card atem-preset"><h3 class="atem-card-title">' + RT.escapeHtml(activePreset.title) + '</h3>' +
+            (activePreset.hinweis ? '<p class="atem-hint">' + RT.escapeHtml(activePreset.hinweis) + '</p>' : '') + '</div>'
+          : '') +
         connectionCardsHtml(true) +
         '<div class="atem-card">' +
-          '<h3 class="atem-card-title">Atemmuster</h3>' +
+          '<h3 class="atem-card-title">' + (isSigh ? 'Zyklisches Seufzen' : 'Atemmuster') + '</h3>' +
           '<div class="atem-fields">' +
-            '<label class="atem-field"><span>Atemzüge/min</span><select class="atem-select" id="atemBpm">' +
-              optionsHtml(Core.BPM_OPTIONS.map(bpm => ({value:bpm, label:fmtBpm(bpm)})), settings.bpm) + '</select></label>' +
-            '<label class="atem-field"><span>Ein : Aus</span><select class="atem-select" id="atemIe">' +
-              optionsHtml(Object.keys(Core.IE_OPTIONS).map(ie => ({value:ie, label:ie})), settings.ie) + '</select></label>' +
+            (isSigh ? '' :
+              '<label class="atem-field"><span>Atemzüge/min</span><select class="atem-select" id="atemBpm">' +
+                optionsHtml(Core.BPM_OPTIONS.map(bpm => ({value:bpm, label:fmtBpm(bpm)})), draft.bpm) + '</select></label>' +
+              '<label class="atem-field"><span>Ein : Aus</span><select class="atem-select" id="atemIe">' +
+                optionsHtml(Object.keys(Core.IE_OPTIONS).map(ie => ({value:ie, label:ie})), draft.ie) + '</select></label>') +
             '<label class="atem-field"><span>Dauer</span><select class="atem-select" id="atemDuration">' +
-              optionsHtml(SESSION_MINUTES.map(min => ({value:min, label:min + ' min'})), settings.durationMin) + '</select></label>' +
+              optionsHtml(durations.map(min => ({value:min, label:min + ' min'})), draft.durationMin) + '</select></label>' +
           '</div>' +
           '<p class="atem-hint" id="atemPatternHint"></p>' +
+          '<p class="atem-hint" id="atemRfNote" hidden></p>' +
         '</div>' +
-        foldableCard('Anzeige und Hinweise <span class="atem-fold-note" id="atemCueNote"></span>', true,
-          '<div class="atem-checks">' +
-            checkHtml('atemTone', 'Leiser Ton am Phasenwechsel', settings.tone) +
-            checkHtml('atemVibrate', navigator.vibrate ? 'Vibration am Phasenwechsel' : 'Vibration (auf diesem Gerät nicht verfügbar)', settings.vibrate && !!navigator.vibrate) +
-            checkHtml('atemFeedback', 'Live-Feedback anzeigen', settings.showFeedback) +
-            checkHtml('atemKeepRr', 'RR-Rohdaten speichern (rund 8 KB je 20 min)', settings.keepRr) +
-          '</div>' +
-          '<p class="atem-hint">Beim Einschalten kommt sofort ein Probehinweis. Der Ton folgt der Medienlautstärke des Handys.</p>' +
-          '<label class="atem-field atem-field-wide"><span>Abendmodus</span><select class="atem-select" id="atemEvening">' +
-            optionsHtml([{value:'auto', label:'Automatisch ab 19 Uhr'}, {value:'an', label:'An'}, {value:'aus', label:'Aus'}], settings.eveningMode) +
-          '</select></label>') +
+        cueOptionsHtml(true) +
         '<div class="atem-card">' +
           '<h3 class="atem-card-title">Wie angespannt bist du gerade?</h3>' +
           '<p class="atem-hint">0 = gar nicht, 10 = sehr stark. Optional.</p>' +
@@ -677,257 +912,92 @@
           ? 'Mit je 1 min Ruhemessung vorher und nachher. Beide lassen sich überspringen.'
           : 'Ohne Gurt läuft nur der Pacer, ohne Messwerte.';
       }
+      function currentPattern(){
+        return draft.technik === 'sigh' ? Core.buildSighPattern() : Core.buildBreathPattern(draft.bpm, draft.ie);
+      }
       function updatePatternHint(){
-        const pattern = Core.buildBreathPattern(settings.bpm, settings.ie);
-        byId('atemPatternHint').textContent = fmt(pattern.phases[0].ms / 1000, 1) + ' s ein, ' + fmt(pattern.phases[1].ms / 1000, 1) + ' s aus';
+        byId('atemPatternHint').textContent = isSigh
+          ? 'Zwei Atemzüge nacheinander durch die Nase, dann lange durch den Mund ausatmen.'
+          : fmt(currentPattern().phases[0].ms / 1000, 1) + ' s ein, ' + fmt(currentPattern().phases[1].ms / 1000, 1) + ' s aus';
       }
-      byId('atemBpm').addEventListener('change', e => { saveSetting('bpm', Number(e.target.value)); updatePatternHint(); });
-      byId('atemIe').addEventListener('change', e => { saveSetting('ie', e.target.value); updatePatternHint(); });
-      byId('atemDuration').addEventListener('change', e => saveSetting('durationMin', Number(e.target.value)));
-      function updateCueNote(){
-        byId('atemCueNote').textContent = '· Ton ' + (settings.tone ? 'an' : 'aus') + ', Vibration ' + (settings.vibrate ? 'an' : 'aus');
+      // Eine geplante Einheit lässt sich anpassen, ändert aber nicht die eigenen Vorgaben.
+      function changeDraft(key, value){
+        draft[key] = value;
+        if(!activePreset) saveSetting(key, value);
+        updatePatternHint();
       }
-      byId('atemVibrate').disabled = !navigator.vibrate;
-      byId('atemTone').addEventListener('change', e => {
-        saveSetting('tone', e.target.checked);
-        updateCueNote();
-        if(e.target.checked) cues.tone(660, 0.4, 0.18);
-      });
-      byId('atemVibrate').addEventListener('change', e => {
-        saveSetting('vibrate', e.target.checked);
-        updateCueNote();
-        if(e.target.checked) cues.vibrate(150);
-      });
-      updateCueNote();
-      byId('atemFeedback').addEventListener('change', e => saveSetting('showFeedback', e.target.checked));
-      byId('atemKeepRr').addEventListener('change', e => saveSetting('keepRr', e.target.checked));
-      byId('atemEvening').addEventListener('change', e => { saveSetting('eveningMode', e.target.value); applyEvening(); });
+      if(!isSigh){
+        byId('atemBpm').addEventListener('change', e => changeDraft('bpm', Number(e.target.value)));
+        byId('atemIe').addEventListener('change', e => changeDraft('ie', e.target.value));
+      }
+      byId('atemDuration').addEventListener('change', e => changeDraft('durationMin', Number(e.target.value)));
+      bindCueOptions(applyEvening);
       bindScale('atemTensionBefore', value => { tensionBefore = value; });
-      byId('atemStart').addEventListener('click', startRun);
+      byId('atemStart').addEventListener('click', () => startRun(draft, currentPattern()));
       signal.listeners.add(updateSetup);
       detachSetup = () => signal.listeners.delete(updateSetup);
       updateSetup();
       updatePatternHint();
+      if(!isSigh){
+        latestRealRf().then(result => {
+          const note = byId('atemRfNote');
+          if(!note || !result || result.recommendedBpm === null) return;
+          note.hidden = false;
+          note.textContent = 'Dein Resonanzfrequenz-Test vom ' + fmtIsoDate(result.date) + ': ' + fmtBpm(result.recommendedBpm) + '/min.';
+        });
+      }
     }
 
     /* ----- Ablauf ----- */
-    function startRun(){
+    function startRun(draft, pattern){
       detachSetup();
       detachSetup = null;
       cues.prepare();
       const measuring = signalActive();
       if(measuring) signal.resetRecording();
-      run = {
-        pattern: Core.buildBreathPattern(settings.bpm, settings.ie),
-        plannedMs: settings.durationMin * 60000,
-        measuring,
-        source: measuring ? signal.source : null,
-        tensionBefore,
-        startedAt: new Date(),
-        ranges: {baseline:null, pacer:null, post:null},
-        step: null,
-        stepStart: 0,
-        lastPhaseKey: null,
-        hiddenMs: 0,
-        hiddenSince: document.visibilityState === 'hidden' ? performance.now() : null,
-        tickCount: 0
-      };
-      renderRunScreen();
-      wakeLock.onChange = updateRunHints;
-      wakeLock.acquire();
-      signal.listeners.add(updateRunHints);
-      document.addEventListener('visibilitychange', trackVisibility);
-      enterStep(measuring ? 'baseline' : 'pacer');
-      tickTimer = setInterval(tick, 100);
-      frameHandle = requestAnimationFrame(frame);
-    }
-
-    function trackVisibility(){
-      if(!run) return;
-      const now = performance.now();
-      if(document.visibilityState === 'hidden') run.hiddenSince = now;
-      else if(run.hiddenSince !== null){
-        run.hiddenMs += now - run.hiddenSince;
-        run.hiddenSince = null;
-      }
-      updateRunHints();
-    }
-
-    function stepDuration(step){ return step === 'pacer' ? run.plannedMs : REST_MEASUREMENT_MS; }
-
-    function enterStep(step){
-      const now = performance.now();
-      if(run.step) run.ranges[run.step] = {start:run.stepStart, end:now};
-      if(!step){ finishRun(); return; }
-      if(run.step) cues.step();
-      run.step = step;
-      run.stepStart = now;
-      run.lastPhaseKey = null;
-      sim.setBreathHz(step === 'pacer' ? run.pattern.bpm / 60 : 0.25);
-      byId('atemRunStep').textContent = STEP_LABELS[step];
-      byId('atemRunNext').textContent = step === 'pacer' ? 'Beenden' : 'Überspringen';
-      if(step !== 'pacer'){
-        byId('atemPacerLabel').textContent = 'Normal atmen';
-        byId('atemPacerCircle').dataset.kind = 'rest';
-      }
-    }
-
-    function nextStep(){
-      if(run.step === 'baseline') enterStep('pacer');
-      else if(run.step === 'pacer') enterStep(run.measuring ? 'post' : null);
-      else enterStep(null);
-    }
-
-    function tick(){
-      if(!run) return;
-      const now = performance.now();
-      const elapsed = now - run.stepStart;
-      const duration = stepDuration(run.step);
-      if(elapsed >= duration){ nextStep(); return; }
-      byId('atemRunCountdown').textContent = fmtCountdown(duration - elapsed);
-      if(run.step === 'pacer'){
-        const state = Core.pacerState(run.pattern, elapsed);
-        const key = state.cycleIndex + ':' + state.phaseIndex;
-        if(key !== run.lastPhaseKey){
-          run.lastPhaseKey = key;
-          cues.phase(state.kind);
-          byId('atemPacerLabel').textContent = state.label;
-          byId('atemPacerCircle').dataset.kind = state.kind;
+      const startedAt = new Date();
+      const plannedMs = draft.durationMin * 60000;
+      const source = measuring ? signal.source : null;
+      const pacerStep = {label:STEP_LABELS.pacer, kind:'pacer', durationMs:plannedMs, pattern, nextLabel:'Beenden'};
+      const rest = label => ({label, kind:'rest', durationMs:REST_MEASUREMENT_MS, nextLabel:'Überspringen'});
+      const steps = measuring ? [rest(STEP_LABELS.baseline), pacerStep, rest(STEP_LABELS.post)] : [pacerStep];
+      const runTension = tensionBefore;
+      runner = createStepRunner({
+        root, steps, measuring,
+        onFinish: ({ranges, hiddenMs}) => {
+          runner = null;
+          const rangeOf = step => { const i = steps.indexOf(step); return i >= 0 ? ranges[i] : null; };
+          const pacerRange = rangeOf(pacerStep);
+          const summary = Core.summarizeSession({
+            beats: measuring ? signal.pipeline.beats : [],
+            pattern,
+            baseline: measuring ? ranges[0] : null,
+            pacer: pacerRange,
+            post: measuring ? ranges[2] : null
+          });
+          pending = {draft, pattern, plannedMs, source, measuring, startedAt, pacerRange, summary, hiddenMs, tensionBefore:runTension};
+          showClosing();
         }
-      }
-      run.tickCount++;
-      if(run.measuring && settings.showFeedback){
-        if(run.tickCount % 3 === 0) redrawCurve(now);
-        if(run.tickCount % 10 === 0) updateRsa(now);
-      }
-    }
-
-    /* Rein zeitbasiert: Nach einer Verzögerung springt der Kreis an die richtige Stelle. */
-    function frame(){
-      if(!run) return;
-      const circle = byId('atemPacerCircle');
-      const level = run.step === 'pacer'
-        ? Core.pacerState(run.pattern, performance.now() - run.stepStart).level
-        : 0.35;
-      circle.style.transform = 'scale(' + (0.42 + 0.58 * level).toFixed(4) + ')';
-      frameHandle = requestAnimationFrame(frame);
-    }
-
-    function redrawCurve(now){
-      const bands = run.step === 'pacer' || run.ranges.pacer
-        ? Core.pacerBands(run.pattern, run.ranges.pacer ? run.ranges.pacer.start : run.stepStart, now - CURVE_SPAN_MS,
-            run.ranges.pacer ? run.ranges.pacer.end : now)
-        : [];
-      drawHeartRateCurve(byId('atemRunCurve'), signal.pipeline.beats, now, bands);
-    }
-
-    function updateRsa(now){
-      const start = run.ranges.pacer ? run.ranges.pacer.start : (run.step === 'pacer' ? run.stepStart : null);
-      if(start === null) return;
-      const end = run.ranges.pacer ? run.ranges.pacer.end : now - RSA_EVALUATION_DELAY_MS;
-      const cycles = Core.pacerCycles(run.pattern, start, end).slice(-RSA_TREND_CYCLES);
-      const summary = Core.rsaSummary(signal.pipeline.beats.slice(-400), cycles);
-      byId('atemRunRsa').textContent = summary.last === null ? '–' : fmt(summary.last, 1) + ' bpm';
-      drawSparkline(byId('atemRunSpark'), summary.perCycle.filter(v => v !== null));
-    }
-
-    function updateFeedbackVisibility(){
-      const visible = run.measuring && settings.showFeedback;
-      byId('atemRunFeedback').hidden = !visible;
-      byId('atemRunToggle').hidden = !run.measuring;
-      byId('atemRunToggle').textContent = settings.showFeedback ? 'Feedback ausblenden' : 'Feedback einblenden';
-    }
-
-    function updateRunHints(){
-      if(!run) return;
-      const lost = run.measuring && signal.status === 'unterbrochen';
-      byId('atemRunLost').hidden = !lost;
-      byId('atemRunWake').hidden = !wakeLock.failed;
-      byId('atemRunHidden').hidden = run.hiddenMs < 1000;
-    }
-
-    function renderRunScreen(){
-      viewEl.classList.add('atem-running');
-      viewEl.scrollTop = 0;
-      root.innerHTML =
-        '<div class="atem-run">' +
-          '<div class="atem-run-head"><span id="atemRunStep"></span><span class="mono" id="atemRunCountdown"></span></div>' +
-          '<div class="atem-pacer">' +
-            '<div class="atem-pacer-circle" id="atemPacerCircle"></div>' +
-            '<div class="atem-pacer-label" id="atemPacerLabel" aria-live="polite"></div>' +
-          '</div>' +
-          '<div class="atem-card atem-warning" id="atemRunLost" role="alert" hidden>' +
-            '<p class="atem-hint">Gurtverbindung unterbrochen. Der Pacer läuft weiter.</p>' +
-            '<button class="atem-btn" id="atemRunReconnect">Neu verbinden</button>' +
-          '</div>' +
-          '<p class="atem-hint" id="atemRunWake" hidden>Der Bildschirm konnte nicht angehalten werden. Stelle das Bildschirm-Timeout hoch genug ein.</p>' +
-          '<p class="atem-hint" id="atemRunHidden" hidden>Der Bildschirm war zwischendurch aus. Dabei können Pacer und Hinweise ausgesetzt haben.</p>' +
-          '<div class="atem-card" id="atemRunFeedback">' +
-            '<canvas class="atem-curve atem-curve-small" id="atemRunCurve"></canvas>' +
-            '<div class="atem-rsa-row"><div><div class="atem-rsa-value" id="atemRunRsa">–</div><div class="atem-rsa-label">RSA letzter Atemzyklus</div></div>' +
-            '<canvas class="atem-spark" id="atemRunSpark"></canvas></div>' +
-          '</div>' +
-          '<div class="atem-actions atem-run-actions">' +
-            '<button class="atem-btn" id="atemRunToggle"></button>' +
-            '<button class="atem-btn" id="atemRunNext"></button>' +
-          '</div>' +
-        '</div>';
-      byId('atemRunNext').addEventListener('click', nextStep);
-      byId('atemRunReconnect').addEventListener('click', () => ble.open());
-      byId('atemRunToggle').addEventListener('click', () => {
-        saveSetting('showFeedback', !settings.showFeedback);
-        updateFeedbackVisibility();
       });
-      updateFeedbackVisibility();
-      updateRunHints();
-    }
-
-    function stopRunMachinery(){
-      clearInterval(tickTimer);
-      cancelAnimationFrame(frameHandle);
-      tickTimer = null;
-      wakeLock.onChange = null;
-      wakeLock.release();
-      signal.listeners.delete(updateRunHints);
-      document.removeEventListener('visibilitychange', trackVisibility);
-    }
-
-    function finishRun(){
-      const finished = run;
-      if(finished.hiddenSince !== null) finished.hiddenMs += performance.now() - finished.hiddenSince;
-      stopRunMachinery();
-      run = null;
-      signal.pipeline.finish();
-      const summary = Core.summarizeSession({
-        beats: finished.measuring ? signal.pipeline.beats : [],
-        pattern: finished.pattern,
-        baseline: finished.ranges.baseline,
-        pacer: finished.ranges.pacer,
-        post: finished.ranges.post
-      });
-      pending = {finished, summary};
-      showClosing();
     }
 
     /* ----- Abschluss ----- */
     function buildRecord(tensionAfter, note){
-      const {finished, summary} = pending;
+      const {draft, pattern, plannedMs, source, startedAt, pacerRange, summary, hiddenMs, tensionBefore:before} = pending;
       const segment = stats => stats && {
         rmssd: round2(stats.rmssd), lnRmssd: round2(stats.lnRmssd), hr: round2(stats.hr), beats: stats.beats
       };
-      const started = finished.startedAt;
-      const pacerRange = finished.ranges.pacer;
       return {
         id: RT.uid(),
-        startedAt: started.toISOString(),
-        date: RT.toISODate(started),
-        time: String(started.getHours()).padStart(2, '0') + ':' + String(started.getMinutes()).padStart(2, '0'),
-        technik: 'spb',
-        planId: null,
-        unitId: null,
-        bpm: finished.pattern.bpm,
-        ie: finished.pattern.ie,
-        plannedMin: finished.plannedMs / 60000,
+        startedAt: startedAt.toISOString(),
+        date: RT.toISODate(startedAt),
+        time: String(startedAt.getHours()).padStart(2, '0') + ':' + String(startedAt.getMinutes()).padStart(2, '0'),
+        technik: draft.technik,
+        planId: activePreset && activePreset.planId || null,
+        unitId: activePreset && activePreset.unitId || null,
+        bpm: round2(pattern.bpm),
+        ie: pattern.ie,
+        plannedMin: plannedMs / 60000,
         durationSec: pacerRange ? Math.round((pacerRange.end - pacerRange.start) / 1000) : 0,
         baseline: segment(summary.baseline),
         post: segment(summary.post),
@@ -938,11 +1008,11 @@
         artefactCount: summary.artefactCount,
         beatCount: summary.beatCount,
         quality: summary.quality,
-        tensionBefore: finished.tensionBefore,
+        tensionBefore: before,
         tensionAfter,
         note,
-        source: finished.source,
-        hiddenSec: Math.round(finished.hiddenMs / 1000),
+        source,
+        hiddenSec: Math.round(hiddenMs / 1000),
         hasRr: false
       };
     }
@@ -958,13 +1028,12 @@
     }
 
     function showClosing(){
-      viewEl.classList.remove('atem-running');
       viewEl.scrollTop = 0;
-      const {finished, summary} = pending;
-      const pacerRange = finished.ranges.pacer;
+      const {pattern, measuring, source, pacerRange, summary, tensionBefore:before} = pending;
       const durationMs = pacerRange ? pacerRange.end - pacerRange.start : 0;
       let tensionAfter = null;
-      const measured = finished.measuring && summary.beatCount > 0;
+      const measured = measuring && summary.beatCount > 0;
+      const poorSignal = measured && summary.quality !== 'gut';
       root.innerHTML =
         '<div class="atem-card">' +
           '<h3 class="atem-card-title">Diese Session</h3>' +
@@ -976,12 +1045,13 @@
                 stat('atemSumQuality', 'Artefakte')
               : '') +
           '</div>' +
-          (finished.source === 'sim' ? '<p class="atem-hint">Simulatordaten, keine echte Messung.</p>' : '') +
+          (poorSignal ? '<p class="atem-hint" id="atemContactHint">Das Signal war gestört, die Werte sind daher nur eingeschränkt aussagekräftig. Meist liegt das am Gurtkontakt: Befeuchte die Elektroden und zieh den Gurt etwas fester.</p>' : '') +
+          (source === 'sim' ? '<p class="atem-hint">Simulatordaten, keine echte Messung.</p>' : '') +
         '</div>' +
         '<div class="atem-card">' +
           '<h3 class="atem-card-title">Wie angespannt bist du jetzt?</h3>' +
           '<p class="atem-hint">0 = gar nicht, 10 = sehr stark. Optional.' +
-            (finished.tensionBefore !== null ? ' Vorher: ' + finished.tensionBefore + '.' : '') + '</p>' +
+            (before !== null ? ' Vorher: ' + before + '.' : '') + '</p>' +
           scaleHtml('atemTensionAfter', 'Anspannung nachher') +
           '<label class="atem-field atem-field-wide"><span>Notiz (optional)</span><textarea class="atem-textarea" id="atemNote" rows="2"></textarea></label>' +
         '</div>' +
@@ -993,7 +1063,7 @@
         '</div>';
 
       byId('atemSumDuration').textContent = fmtCountdown(durationMs);
-      byId('atemSumPattern').textContent = fmtBpm(finished.pattern.bpm) + ' · ' + finished.pattern.ie;
+      byId('atemSumPattern').textContent = pending.draft.technik === 'sigh' ? 'Seufzen' : fmtBpm(pattern.bpm) + ' · ' + pattern.ie;
       if(measured){
         byId('atemSumRsa').textContent = summary.rsaMean === null ? '–' : fmt(summary.rsaMean, 1) + ' bpm';
         byId('atemSumBase').textContent = summary.baseline ? fmt(summary.baseline.rmssd, 1) : '–';
@@ -1019,16 +1089,18 @@
         showSaved(record);
       });
       byId('atemExportPending').addEventListener('click', () => {
-        RT.downloadJSON(currentRecord(), 'atmung-session-' + RT.toISODate(new Date()) + '.json');
+        RT.downloadJSON(currentRecord(), 'atmung-session-' + todayIso() + '.json');
       });
       byId('atemDiscard').addEventListener('click', () => {
         if(!confirm('Session verwerfen? Sie wird nicht gespeichert.')) return;
         pending = null;
+        activePreset = null;
         showSetup();
       });
     }
 
     function showSaved(record){
+      activePreset = null;
       const before = record.tensionBefore, after = record.tensionAfter;
       const tensionText = before !== null && after !== null ? ' Anspannung von ' + before + ' auf ' + after + '.' : '';
       root.innerHTML =
@@ -1044,16 +1116,499 @@
     return {
       cleanup(){
         if(detachSetup) detachSetup();
-        if(run) stopRunMachinery();
-        run = null;
+        if(runner) runner.stop();
+        runner = null;
         viewEl.classList.remove('atem-running', 'atem-evening');
       },
       beforeLeave(){
-        if(run) return confirm('Session abbrechen? Sie wird nicht gespeichert.');
+        if(runner) return confirm('Session abbrechen? Sie wird nicht gespeichert.');
         if(pending) return confirm('Session verwerfen? Sie ist noch nicht gespeichert.');
         return true;
       }
     };
+  }
+
+  /* ---------- Resonanzfrequenz-Test ---------- */
+  async function loadRfResults(){
+    const stored = await RT.store.get(RF_RESULTS_KEY);
+    return stored ? JSON.parse(stored.value) : [];
+  }
+
+  /* Simulatorläufe dürfen die Pacer-Vorbelegung nicht verändern. */
+  async function latestRealRf(){
+    const results = await loadRfResults();
+    const real = results.filter(r => r.source === 'ble' && r.recommendedBpm !== null);
+    return real.length ? real[real.length - 1] : null;
+  }
+
+  function renderRfView(root, preset){
+    const byId = id => document.getElementById(id);
+    let runner = null;
+    let detachSetup = null;
+
+    function applyEvening(){ viewEl.classList.toggle('atem-evening', eveningActive()); }
+
+    function showSetup(){
+      viewEl.classList.remove('atem-running');
+      applyEvening();
+      const totalMin = (Core.RF_STEPS.length * Core.RF_STEP_MS + (Core.RF_STEPS.length - 1) * Core.RF_PAUSE_MS) / 60000;
+      root.innerHTML =
+        (preset ? '<div class="atem-card atem-preset"><h3 class="atem-card-title">' + RT.escapeHtml(preset.title) + '</h3></div>' : '') +
+        '<div class="atem-card">' +
+          '<h3 class="atem-card-title">So läuft der Test</h3>' +
+          '<p class="atem-hint">Je 2 min Pacer bei ' + Core.RF_STEPS.map(fmtBpm).join(', ') + ' Atemzügen/min, dazwischen 30 s freie Atmung. Das dauert rund ' + totalMin + ' min. Der Vorschlag ist die Stufe mit der größten RSA-Amplitude.</p>' +
+          '<p class="atem-hint">Der Test ist eine Option, keine Voraussetzung: Laut Metaanalyse (Lehrer et al. 2020) bringt die individuelle Resonanzfrequenz keinen nachgewiesenen Zusatznutzen gegenüber 6/min.</p>' +
+        '</div>' +
+        connectionCardsHtml(true) +
+        cueOptionsHtml(false) +
+        '<button class="atem-btn primary atem-start" id="atemRfStart">Test starten</button>' +
+        '<p class="atem-hint" id="atemRfStartHint"></p>' +
+        '<div id="atemRfHistory"></div>';
+
+      const updateConnection = bindConnectionCards();
+      function updateSetup(){
+        updateConnection();
+        byId('atemRfStart').disabled = !signalActive();
+        byId('atemRfStartHint').textContent = signalActive() ? '' : 'Der Test braucht Messwerte: Verbinde zuerst den Gurt.';
+      }
+      bindCueOptions(applyEvening);
+      byId('atemRfStart').addEventListener('click', startRun);
+      signal.listeners.add(updateSetup);
+      detachSetup = () => signal.listeners.delete(updateSetup);
+      updateSetup();
+      loadRfResults().then(results => {
+        const holder = byId('atemRfHistory');
+        if(!holder || !results.length) return;
+        const latest = results[results.length - 1];
+        holder.innerHTML = '<div class="atem-card"><h3 class="atem-card-title">Letzter Test</h3>' + resultHtml(latest) + '</div>';
+      });
+    }
+
+    function startRun(){
+      detachSetup();
+      detachSetup = null;
+      cues.prepare();
+      signal.resetRecording();
+      const source = signal.source;
+      const startedAt = new Date();
+      const steps = [];
+      const pacerSteps = [];
+      Core.RF_STEPS.forEach((bpm, i) => {
+        const step = {
+          label: 'Stufe ' + (i + 1) + ' von ' + Core.RF_STEPS.length + ' · ' + fmtBpm(bpm) + '/min',
+          kind: 'pacer',
+          durationMs: Core.RF_STEP_MS,
+          pattern: Core.buildBreathPattern(bpm, '1:1'),
+          nextLabel: 'Überspringen'
+        };
+        steps.push(step);
+        pacerSteps.push(step);
+        if(i < Core.RF_STEPS.length - 1){
+          steps.push({label:'Pause', kind:'rest', durationMs:Core.RF_PAUSE_MS, restLabel:'Frei atmen', nextLabel:'Weiter'});
+        }
+      });
+      runner = createStepRunner({
+        root, steps, measuring:true,
+        onFinish: ({ranges}) => {
+          runner = null;
+          const stepStats = pacerSteps.map(step => Core.rfStepStats(signal.pipeline.beats, step.pattern, ranges[steps.indexOf(step)]));
+          finishTest(stepStats, startedAt, source);
+        }
+      });
+    }
+
+    async function finishTest(stepStats, startedAt, source){
+      const evaluation = Core.evaluateRfSteps(stepStats);
+      const result = {
+        id: RT.uid(),
+        startedAt: startedAt.toISOString(),
+        date: RT.toISODate(startedAt),
+        technik: 'rf-test',
+        planId: preset && preset.planId || null,
+        unitId: preset && preset.unitId || null,
+        source,
+        recommendedBpm: evaluation.recommendedBpm,
+        alternativeBpm: evaluation.alternativeBpm,
+        close: evaluation.close,
+        steps: stepStats.map(step => ({
+          bpm: step.bpm, rsaMean: round2(step.rsaMean), rmssd: round2(step.rmssd),
+          artefactRate: step.artefactRate === null ? null : Math.round(step.artefactRate * 10000) / 10000,
+          cycles: step.cycles, valid: step.valid
+        }))
+      };
+      let saveError = null;
+      try{
+        const results = await loadRfResults();
+        results.push(result);
+        await RT.store.set(RF_RESULTS_KEY, JSON.stringify(results));
+        if(source === 'ble' && result.recommendedBpm !== null) saveSetting('bpm', result.recommendedBpm);
+      }catch(e){
+        saveError = e.message;
+      }
+      viewEl.scrollTop = 0;
+      root.innerHTML =
+        '<div class="atem-card"><h3 class="atem-card-title">Ergebnis</h3>' + resultHtml(result) +
+          (source === 'sim' ? '<p class="atem-hint">Simulatordaten: Das Ergebnis ändert deine Pacer-Vorgabe nicht.</p>' : '') +
+        '</div>' +
+        (saveError
+          ? '<p class="atem-error" role="alert">Speichern fehlgeschlagen: ' + RT.escapeHtml(saveError) + '. Sichere das Ergebnis als Datei.</p>' +
+            '<div class="atem-actions"><button class="atem-btn" id="atemRfExport">Als JSON sichern</button></div>'
+          : '<p class="atem-hint" id="atemRfSaved">Gespeichert.</p>');
+      if(saveError){
+        byId('atemRfExport').addEventListener('click', () => RT.downloadJSON(result, 'atmung-rf-test-' + todayIso() + '.json'));
+      }
+    }
+
+    function resultHtml(result){
+      const best = result.recommendedBpm;
+      let verdict;
+      if(best === null){
+        verdict = 'Zu wenige saubere Daten für einen Vorschlag. Befeuchte die Elektroden und wiederhole den Test.';
+      } else if(result.close){
+        verdict = fmtBpm(best) + ' und ' + fmtBpm(result.alternativeBpm) + ' Atemzüge/min liegen weniger als 10 % auseinander. Vorbelegt ist ' + fmtBpm(best) + '/min. Wiederhole den Test an einem anderen Tag, um das einzugrenzen.';
+      } else {
+        verdict = 'Die größte RSA-Amplitude lag bei ' + fmtBpm(best) + ' Atemzügen/min.';
+      }
+      const rows = result.steps.map(step =>
+        '<tr' + (step.bpm === best ? ' class="atem-best"' : '') + '>' +
+          '<td class="mono">' + fmtBpm(step.bpm) + '</td>' +
+          '<td class="mono">' + (step.valid ? fmt(step.rsaMean, 1) : '–') + '</td>' +
+          '<td class="mono">' + fmt(step.rmssd, 1) + '</td>' +
+          '<td class="mono">' + (step.artefactRate === null ? '–' : fmt(step.artefactRate * 100, 1) + ' %') + '</td>' +
+          '<td class="mono">' + step.cycles + '</td></tr>').join('');
+      return '<p class="atem-hint" id="atemRfVerdict">' + fmtIsoDate(result.date) + ': ' + verdict + '</p>' +
+        '<div class="table-scroll atem-beats"><table class="history-table" id="atemRfTable"><thead><tr><th>/min</th><th>RSA (bpm)</th><th>RMSSD</th><th>Artefakte</th><th>Zyklen</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+
+    showSetup();
+    return {
+      cleanup(){
+        if(detachSetup) detachSetup();
+        if(runner) runner.stop();
+        runner = null;
+        viewEl.classList.remove('atem-running', 'atem-evening');
+      },
+      beforeLeave(){
+        return runner ? confirm('Test abbrechen? Er wird nicht gespeichert.') : true;
+      }
+    };
+  }
+
+  /* ---------- Trainingspläne ---------- */
+  const TIME_LABELS = {morgen:'morgens', abend:'abends', frei:''};
+  const QUICK_STARTS = [
+    {
+      id: 'akut-sigh',
+      title: 'Akut: Zyklisches Seufzen',
+      text: '5 min bei Nervosität oder vor dem Wettkampf (Balban et al. 2023).',
+      preset: {technik:'sigh', bpm:null, ie:null, durationMin:5, title:'Akut: Zyklisches Seufzen', hinweis:'Doppelte Einatmung durch die Nase, lange Ausatmung durch den Mund.'}
+    },
+    {
+      id: 'akut-spb',
+      title: 'Akut: Langsam atmen',
+      text: 'Die Alternative: 5 min bei 6 Atemzügen/min.',
+      preset: {technik:'spb', bpm:6, ie:'1:1', durationMin:5, title:'Akut: Langsam atmen', hinweis:''}
+    },
+    {
+      id: 'regeneration',
+      title: 'Regeneration nach dem Training',
+      text: '10 min bei 6 Atemzügen/min nach harten Einheiten.',
+      preset: {technik:'spb', bpm:6, ie:'1:1', durationMin:10, title:'Regeneration nach dem Training', hinweis:'Die Evidenz für einen Leistungseffekt ist schwächer als für Stress und Wohlbefinden.'}
+    }
+  ];
+
+  async function loadPlans(){
+    const stored = await RT.store.get(PLANS_KEY);
+    if(stored) return JSON.parse(stored.value);
+    // Nur beim allerersten Mal anlegen: Gelöschte Standardpläne kommen nicht zurück.
+    await RT.store.set(PLANS_KEY, JSON.stringify(Core.STANDARD_PLANS));
+    return JSON.parse(JSON.stringify(Core.STANDARD_PLANS));
+  }
+  async function savePlans(plans){ await RT.store.set(PLANS_KEY, JSON.stringify(plans)); }
+  async function loadActivePlan(){
+    const stored = await RT.store.get(ACTIVE_PLAN_KEY);
+    return stored ? JSON.parse(stored.value) : null;
+  }
+  function uniquePlanId(plans, wanted){
+    const safe = String(wanted || '').replace(/[^A-Za-z0-9_-]/g, '');
+    return safe && !plans.some(p => p.id === safe) ? safe : 'plan-' + RT.uid();
+  }
+
+  /* Liest nur: Sagt, ob heute im aktiven Radblock eine harte Einheit abgehakt wurde. */
+  async function hardTrainingToday(){
+    try{
+      const activeId = await RT.store.get('active-block-id');
+      if(!activeId) return null;
+      const [blockRaw, logRaw] = await Promise.all([RT.store.get('block:' + activeId.value), RT.store.get('log:' + activeId.value)]);
+      if(!blockRaw || !logRaw) return null;
+      const block = JSON.parse(blockRaw.value), log = JSON.parse(logRaw.value), today = todayIso();
+      for(const week of block.weeks || []){
+        for(const session of week.sessions || []){
+          const entry = log.entries && log.entries[session.id];
+          if(entry && entry.done && entry.date === today && HARD_TRAINING_TAGS.includes(session.tag)) return session.title;
+        }
+      }
+    }catch(e){
+      console.error('Atmung: Radtraining nicht lesbar', e);
+    }
+    return null;
+  }
+
+  function renderPlansView(root){
+    const holder = document.createElement('div');
+    root.innerHTML = '';
+    root.appendChild(holder);
+    let plans = [], active = null, activePlan = null, records = [], rfBpm = null, hardToday = null;
+    let errorText = '', editingId = null;
+    // Bleiben bei Fehlern erhalten: Neuzeichnen darf eingegebenen Text nicht verwerfen.
+    let editorDraft = null, pasteDraft = '';
+
+    function unitLabel(unit){
+      const time = TIME_LABELS[unit.zeit] ? TIME_LABELS[unit.zeit] + ' · ' : '';
+      if(unit.technik === 'rf-test') return time + 'Resonanzfrequenz-Test';
+      if(unit.technik === 'morgen-hrv') return time + 'Morgen-HRV';
+      if(unit.technik === 'sigh') return time + unit.dauerMin + ' min zyklisches Seufzen';
+      const frequency = unit.frequenz === 'rf'
+        ? 'persönliche Frequenz (' + fmtBpm(Core.resolveFrequency('rf', rfBpm)) + '/min' + (rfBpm ? '' : ', noch kein Test') + ')'
+        : fmtBpm(unit.frequenz) + '/min';
+      return time + unit.dauerMin + ' min bei ' + frequency;
+    }
+
+    function dayPart(unit){
+      return unit.tag === 'einmalig' ? 'einmal diese Woche' : 'täglich';
+    }
+
+    function activeCardHtml(){
+      if(!activePlan) return '<div class="atem-card"><h3 class="atem-card-title">Aktueller Plan</h3><p class="atem-hint">Kein Plan aktiv. Du kannst unten einen aktivieren oder frei üben.</p></div>';
+      const today = todayIso();
+      const weekIndex = Core.planWeekIndex(active.startDate, today);
+      const count = activePlan.weeks.length;
+      let body;
+      if(weekIndex < 0){
+        body = '<p class="atem-hint">Beginnt am ' + fmtIsoDate(active.startDate) + '.</p>';
+      } else if(weekIndex >= count){
+        body = '<p class="atem-hint">Der Plan ist durchlaufen. Du kannst ihn beenden oder einen neuen wählen.</p>';
+      } else {
+        const progress = Core.weekProgress(activePlan, active.startDate, weekIndex, records);
+        const units = Core.unitsForDay(activePlan, active.startDate, today, records);
+        body = '<p class="atem-hint" id="atemPlanProgress">Woche ' + (weekIndex + 1) + ' von ' + count + ' · diese Woche ' + progress.done + ' von ' + progress.planned + ' Einheiten</p>' +
+          (activePlan.weeks[weekIndex].weekNote ? '<p class="atem-hint">' + RT.escapeHtml(activePlan.weeks[weekIndex].weekNote) + '</p>' : '') +
+          '<div class="atem-units" id="atemTodayUnits">' + (units.length ? units.map(item =>
+            '<div class="atem-unit' + (item.done ? ' done' : '') + '">' +
+              '<div><div class="atem-unit-title">' + RT.escapeHtml(unitLabel(item.unit)) + '</div>' +
+              (item.unit.hinweis ? '<div class="atem-muted">' + RT.escapeHtml(item.unit.hinweis) + '</div>' : '') + '</div>' +
+              (item.done
+                ? '<span class="atem-unit-done">erledigt</span>'
+                : '<button class="atem-btn primary" data-action="start-unit" data-unit="' + item.unit.id + '">Start</button>') +
+            '</div>').join('') : '<p class="atem-hint">Heute steht nichts an.</p>') + '</div>';
+      }
+      const overview = activePlan.weeks.map((week, i) => {
+        const progress = Core.weekProgress(activePlan, active.startDate, i, records);
+        return '<li class="' + (i === weekIndex ? 'current' : '') + '"><strong>Woche ' + (i + 1) + '</strong> <span class="atem-muted">' + progress.done + ' von ' + progress.planned + '</span>' +
+          '<div class="atem-muted">' + week.sessions.map(unit => RT.escapeHtml(unitLabel(unit) + ', ' + dayPart(unit))).join('<br>') + '</div></li>';
+      }).join('');
+      return '<div class="atem-card" id="atemActivePlan"><h3 class="atem-card-title">Aktueller Plan</h3>' +
+        '<div class="atem-plan-name">' + RT.escapeHtml(activePlan.name) + '</div>' + body +
+        '<details class="atem-week-overview"><summary>Wochenübersicht</summary><ol class="atem-weeks">' + overview + '</ol></details>' +
+        '<div class="atem-actions atem-plan-actions">' +
+          '<label class="atem-field"><span>Startdatum</span><input class="atem-select" type="date" id="atemPlanStart" value="' + active.startDate + '"></label>' +
+          '<button class="atem-btn" data-action="deactivate">Plan beenden</button>' +
+        '</div></div>';
+    }
+
+    function quickStartsHtml(){
+      return '<div class="atem-card"><h3 class="atem-card-title">Schnellstart</h3><div class="atem-quick">' +
+        QUICK_STARTS.map(quick =>
+          '<button class="atem-quick-item" data-action="quick" data-quick="' + quick.id + '">' +
+            '<span class="atem-unit-title">' + RT.escapeHtml(quick.title) + '</span>' +
+            '<span class="atem-muted">' + RT.escapeHtml(quick.text) + '</span>' +
+            (quick.id === 'regeneration' && hardToday ? '<span class="atem-quick-note" id="atemHardToday">Heute abgehakt: ' + RT.escapeHtml(hardToday) + '</span>' : '') +
+          '</button>').join('') + '</div></div>';
+    }
+
+    function planListHtml(){
+      const items = plans.map(plan => {
+        const id = RT.escapeHtml(plan.id);
+        const isActive = active && active.planId === plan.id;
+        return '<div class="atem-plan" data-plan="' + id + '">' +
+          '<div class="atem-plan-name">' + RT.escapeHtml(plan.name) + (isActive ? ' <span class="atem-unit-done">aktiv</span>' : '') + '</div>' +
+          '<div class="atem-muted">' + plan.weeks.length + ' ' + (plan.weeks.length === 1 ? 'Woche' : 'Wochen') + (plan.quelle ? ' · ' + RT.escapeHtml(plan.quelle) : '') + '</div>' +
+          '<div class="atem-actions">' +
+            (isActive ? '' : '<button class="atem-btn" data-action="activate" data-id="' + id + '">Aktivieren</button>') +
+            '<button class="atem-btn" data-action="edit" data-id="' + id + '">Bearbeiten</button>' +
+            '<button class="atem-btn" data-action="duplicate" data-id="' + id + '">Duplizieren</button>' +
+            '<button class="atem-btn" data-action="export" data-id="' + id + '">Exportieren</button>' +
+            '<button class="atem-btn atem-danger" data-action="delete" data-id="' + id + '">Löschen</button>' +
+          '</div>' +
+          (editingId === plan.id
+            ? '<div class="atem-editor"><textarea class="atem-textarea mono" id="atemPlanEditor" rows="12" aria-label="Plan als JSON">' + RT.escapeHtml(editorDraft !== null ? editorDraft : JSON.stringify(plan, null, 2)) + '</textarea>' +
+              '<div class="atem-actions"><button class="atem-btn primary" data-action="save-edit" data-id="' + id + '">Änderungen speichern</button><button class="atem-btn" data-action="cancel-edit">Abbrechen</button></div></div>'
+            : '') +
+        '</div>';
+      }).join('');
+      return '<div class="atem-card"><h3 class="atem-card-title">Alle Pläne</h3>' +
+        (items || '<p class="atem-hint">Noch keine Pläne.</p>') + '</div>';
+    }
+
+    function importHtml(){
+      return foldableCard('Plan importieren', true,
+        '<p class="atem-hint">Als JSON-Datei oder eingefügter Text. Schema: {name, quelle?, weeks:[{weekNote?, sessions:[{tag, zeit, technik, frequenz, ie, dauerMin, hinweis}]}]}. tag: taeglich, einmalig. zeit: morgen, abend, frei. technik: spb, rf-test, sigh, morgen-hrv. frequenz: Wert von 4,5 bis 7 oder "rf".</p>' +
+        '<div class="atem-actions"><button class="atem-btn" data-action="pick-file">Datei wählen</button>' +
+        '<input type="file" id="atemPlanFile" accept="application/json,.json" hidden></div>' +
+        '<textarea class="atem-textarea mono atem-field-wide" id="atemPlanPaste" rows="6" aria-label="Plan als JSON einfügen" placeholder="JSON hier einfügen"></textarea>' +
+        '<div class="atem-actions"><button class="atem-btn" data-action="import-text">Importieren</button></div>');
+    }
+
+    function render(){
+      if(!holder.isConnected) return;
+      holder.innerHTML = activeCardHtml() + quickStartsHtml() +
+        '<p class="atem-error" id="atemPlanError" role="alert">' + RT.escapeHtml(errorText) + '</p>' +
+        planListHtml() + importHtml();
+      const startInput = holder.querySelector('#atemPlanStart');
+      if(startInput) startInput.addEventListener('change', e => changeStartDate(e.target.value));
+      holder.querySelector('#atemPlanFile').addEventListener('change', importFile);
+      if(pasteDraft){
+        const paste = holder.querySelector('#atemPlanPaste');
+        paste.value = pasteDraft;
+        paste.closest('details').open = true;
+      }
+    }
+
+    async function refresh(){
+      try{
+        const [loadedPlans, loadedActive, sessions, rfResults, latest, hard] = await Promise.all([
+          loadPlans(), loadActivePlan(), loadSessions(), loadRfResults(), latestRealRf(), hardTrainingToday()
+        ]);
+        plans = loadedPlans;
+        active = loadedActive;
+        activePlan = active ? plans.find(p => p.id === active.planId) || null : null;
+        records = sessions.concat(rfResults);
+        rfBpm = latest ? latest.recommendedBpm : null;
+        hardToday = hard;
+      }catch(e){
+        errorText = 'Pläne konnten nicht geladen werden: ' + e.message;
+      }
+      render();
+    }
+
+    /* Führt eine Speicheraktion aus und zeigt Fehler an, statt sie zu verschlucken. */
+    async function change(action){
+      errorText = '';
+      try{
+        await action();
+      }catch(e){
+        errorText = 'Speichern fehlgeschlagen: ' + e.message;
+      }
+      await refresh();
+    }
+
+    async function changeStartDate(value){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+      await change(() => RT.store.set(ACTIVE_PLAN_KEY, JSON.stringify(Object.assign({}, active, {startDate:value}))));
+    }
+
+    function addImportedPlan(text){
+      let parsed;
+      try{ parsed = JSON.parse(text); }
+      catch(e){ errorText = 'JSON ist nicht gültig: ' + e.message; render(); return false; }
+      const problem = Core.validatePlan(parsed);
+      if(problem){ errorText = problem; render(); return false; }
+      pasteDraft = '';
+      change(async () => {
+        const plan = Core.normalizePlan(parsed, uniquePlanId(plans, parsed.id));
+        await savePlans(plans.concat(plan));
+      });
+      return true;
+    }
+
+    async function importFile(event){
+      const file = event.target.files[0];
+      event.target.value = '';
+      if(!file) return;
+      let text;
+      try{ text = await file.text(); }
+      catch(e){ errorText = 'Datei konnte nicht gelesen werden.'; render(); return; }
+      addImportedPlan(text);
+    }
+
+    function startUnit(unitId){
+      const weekIndex = Core.planWeekIndex(active.startDate, todayIso());
+      const unit = activePlan.weeks[weekIndex].sessions.find(u => u.id === unitId);
+      const title = activePlan.name + ' · Woche ' + (weekIndex + 1);
+      const link = {planId:activePlan.id, unitId:unit.id, title};
+      if(unit.technik === 'rf-test') launchView('rf', link);
+      else if(unit.technik === 'morgen-hrv') launchView('morgen', link);
+      else if(unit.technik === 'sigh') launchView('session', Object.assign({technik:'sigh', bpm:null, ie:null, durationMin:unit.dauerMin, hinweis:unit.hinweis}, link));
+      else launchView('session', Object.assign({
+        technik: 'spb',
+        bpm: Core.resolveFrequency(unit.frequenz, rfBpm),
+        ie: unit.ie,
+        durationMin: unit.dauerMin,
+        hinweis: unit.hinweis
+      }, link));
+    }
+
+    holder.addEventListener('click', event => {
+      const button = event.target.closest('[data-action]');
+      if(!button) return;
+      const id = button.dataset.id;
+      const plan = plans.find(p => p.id === id);
+      switch(button.dataset.action){
+        case 'start-unit': startUnit(button.dataset.unit); break;
+        case 'quick': launchView('session', QUICK_STARTS.find(q => q.id === button.dataset.quick).preset); break;
+        case 'activate':
+          change(() => RT.store.set(ACTIVE_PLAN_KEY, JSON.stringify({planId:id, startDate:todayIso()})));
+          break;
+        case 'deactivate':
+          if(confirm('Plan beenden? Deine Sessions bleiben erhalten.')) change(() => RT.store.delete(ACTIVE_PLAN_KEY));
+          break;
+        case 'duplicate':
+          change(() => savePlans(plans.concat(Object.assign(JSON.parse(JSON.stringify(plan)), {id:'plan-' + RT.uid(), name:plan.name + ' (Kopie)'}))));
+          break;
+        case 'export':
+          RT.downloadJSON(plan, 'atmung-plan-' + plan.id + '.json');
+          break;
+        case 'delete':
+          if(!confirm('Plan "' + plan.name + '" löschen? Deine Sessions bleiben erhalten.')) return;
+          change(async () => {
+            await savePlans(plans.filter(p => p.id !== id));
+            if(active && active.planId === id) await RT.store.delete(ACTIVE_PLAN_KEY);
+          });
+          break;
+        case 'edit':
+          editingId = editingId === id ? null : id;
+          editorDraft = null;
+          errorText = '';
+          render();
+          break;
+        case 'cancel-edit':
+          editingId = null;
+          editorDraft = null;
+          errorText = '';
+          render();
+          break;
+        case 'save-edit': {
+          editorDraft = holder.querySelector('#atemPlanEditor').value;
+          let parsed;
+          try{ parsed = JSON.parse(editorDraft); }
+          catch(e){ errorText = 'JSON ist nicht gültig: ' + e.message; render(); return; }
+          const problem = Core.validatePlan(parsed);
+          if(problem){ errorText = problem; render(); return; }
+          editingId = null;
+          editorDraft = null;
+          change(() => savePlans(plans.map(p => p.id === id ? Core.normalizePlan(parsed, id) : p)));
+          break;
+        }
+        case 'pick-file': holder.querySelector('#atemPlanFile').click(); break;
+        case 'import-text': {
+          pasteDraft = holder.querySelector('#atemPlanPaste').value;
+          addImportedPlan(pasteDraft);
+          break;
+        }
+      }
+    });
+
+    refresh();
   }
 
   /* ---------- Unterseiten ---------- */
@@ -1064,8 +1619,8 @@
   }
   const VIEWS = {
     session: {title:'Session starten', render:renderSessionView},
-    rf: {title:'Resonanzfrequenz-Test', render:renderPlannedView('Folgt in Phase 3.')},
-    plaene: {title:'Trainingspläne', render:renderPlannedView('Folgt in Phase 3.')},
+    rf: {title:'Resonanzfrequenz-Test', render:renderRfView},
+    plaene: {title:'Trainingspläne', render:renderPlansView},
     morgen: {title:'Morgen-HRV', render:renderPlannedView('Folgt in Phase 4.')},
     verlauf: {title:'Verlauf', render:renderPlannedView('Folgt in Phase 4.')},
     wissen: {title:'Wissen', render:renderPlannedView('Folgt in Phase 4.')},
@@ -1088,7 +1643,7 @@
   document.body.appendChild(viewEl);
 
   let activeView = null;   // {name, cleanup, beforeLeave}
-  let pushedEntry = false; // false, wenn die Seite direkt mit #atem/... geladen wurde
+  let pendingPreset = null;
 
   function viewNameFromHash(){
     if(location.hash.indexOf(HASH_PREFIX) !== 0) return null;
@@ -1102,8 +1657,7 @@
     if(activeView){
       if(activeView.beforeLeave && !activeView.beforeLeave()){
         // Zurück-Geste abgelehnt: Der Verlaufseintrag ist schon weg, also neu anlegen.
-        history.pushState(null, '', HASH_PREFIX + activeView.name);
-        pushedEntry = true;
+        pushViewEntry(activeView.name);
         return;
       }
       if(activeView.cleanup) activeView.cleanup();
@@ -1116,7 +1670,9 @@
     if(!name) return;
     document.getElementById('atemViewTitle').textContent = VIEWS[name].title;
     const body = document.getElementById('atemViewBody');
-    const rendered = VIEWS[name].render(body);
+    const preset = pendingPreset;
+    pendingPreset = null;
+    const rendered = VIEWS[name].render(body, preset);
     activeView = typeof rendered === 'function'
       ? {name, cleanup:rendered, beforeLeave:null}
       : {name, cleanup:rendered ? rendered.cleanup : null, beforeLeave:rendered ? rendered.beforeLeave : null};
@@ -1124,10 +1680,21 @@
     document.getElementById('atemBack').focus();
   }
 
+  /* atemDepth zählt eigene Verlaufseinträge. Fehlt er, wurde die Seite direkt mit #atem/... geöffnet. */
+  function pushViewEntry(name){
+    const depth = (history.state && history.state.atemDepth || 0) + 1;
+    history.pushState({atemDepth:depth}, '', HASH_PREFIX + name);
+  }
+
   function openView(name){
-    history.pushState(null, '', HASH_PREFIX + name);
-    pushedEntry = true;
+    pushViewEntry(name);
     syncViewWithHash();
+  }
+
+  /* Öffnet eine Unterseite aus einer anderen heraus, optional mit Vorbelegung. */
+  function launchView(name, preset){
+    pendingPreset = preset || null;
+    openView(name);
   }
 
   function closeView(){
@@ -1135,8 +1702,7 @@
       if(!activeView.beforeLeave()) return;
       activeView.beforeLeave = null;  // nicht ein zweites Mal beim Verlassen fragen
     }
-    if(pushedEntry){
-      pushedEntry = false;
+    if(history.state && history.state.atemDepth){
       history.back();
     } else {
       history.replaceState(null, '', location.pathname + location.search);
@@ -1145,10 +1711,7 @@
   }
 
   document.getElementById('atemBack').addEventListener('click', closeView);
-  window.addEventListener('popstate', () => {
-    pushedEntry = false;
-    syncViewWithHash();
-  });
+  window.addEventListener('popstate', syncViewWithHash);
   navEl.querySelectorAll('[data-atem-view]').forEach(button => {
     button.addEventListener('click', () => openView(button.dataset.atemView));
   });

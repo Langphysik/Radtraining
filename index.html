@@ -298,7 +298,7 @@
           <button id="exportDataBtn">⬇ Backup exportieren</button>
           <button id="importDataBtn">⬆ Backup importieren</button>
           <input type="file" id="importFileInput" accept="application/json" style="display:none">
-          <span class="nb-hint" style="align-self:center">sichert alle Blöcke &amp; Logs als Datei</span>
+          <span class="nb-hint" style="align-self:center">sichert alle Blöcke, Logs und Atem-Daten als Datei</span>
         </div>
         <div class="new-block-panel" id="newBlockPanel" style="display:none">
           <div class="nb-tabs">
@@ -590,7 +590,7 @@
     let parsed;
     try{ parsed = JSON.parse(text); }catch(e){ alert('Import fehlgeschlagen: ungültiges JSON.'); return; }
     if(!parsed || !parsed.data || typeof parsed.data!=='object'){ alert('Import fehlgeschlagen: unerwartetes Dateiformat.'); return; }
-    if(!confirm('Import überschreibt alle aktuell in dieser App gespeicherten Daten. Fortfahren?')) return;
+    if(!confirm('Import überschreibt alle aktuell in dieser App gespeicherten Daten, auch Atem-Sessions und -Pläne. Ein älteres Backup ohne diese Daten entfernt sie. Fortfahren?')) return;
     const existing = await store.list();
     for(const k of existing.keys){ await store.delete(k); }
     for(const k of Object.keys(parsed.data)){ await store.set(k, parsed.data[k]); }

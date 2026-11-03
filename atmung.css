@@ -129,3 +129,34 @@ body.atem-open{overflow:hidden;}
 .atem-fold-caret{font-size:10px;transition:transform .15s;}
 .atem-fold[open] .atem-fold-caret{transform:rotate(90deg);}
 .atem-fold-note{font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--ink-soft);}
+
+/* ---------- Pläne und Resonanzfrequenz-Test ---------- */
+.atem-preset{border-color:var(--gold);}
+.atem-preset .atem-card-title{color:var(--ink);margin-bottom:0;text-transform:none;letter-spacing:0;font-size:14px;}
+.atem-preset .atem-hint{margin-bottom:0;}
+.atem-plan-name{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:var(--ink);}
+.atem-units{display:flex;flex-direction:column;gap:8px;}
+.atem-unit{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
+.atem-unit.done{opacity:.7;}
+.atem-unit-title{font-size:13.5px;font-weight:500;color:var(--ink);}
+.atem-unit-done{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--good);white-space:nowrap;}
+.atem-week-overview{margin-top:12px;font-size:13px;color:var(--ink-soft);}
+.atem-week-overview > summary{cursor:pointer;min-height:28px;}
+.atem-weeks{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;}
+.atem-weeks li{padding:8px 10px;border-left:2px solid var(--line);}
+.atem-weeks li.current{border-left-color:var(--gold);}
+.atem-plan-actions{align-items:flex-end;justify-content:space-between;margin-top:12px;}
+.atem-quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;}
+.atem-quick-item{display:flex;flex-direction:column;gap:4px;text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer;font-family:'Inter',system-ui,sans-serif;}
+.atem-quick-item:hover{border-color:var(--ink-dim);}
+.atem-quick-note{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--gold);}
+.atem-plan{padding:12px 0;border-top:1px solid var(--line-soft);display:flex;flex-direction:column;gap:6px;}
+.atem-plan:first-of-type{border-top:none;padding-top:0;}
+.atem-danger{color:var(--crimson);}
+.atem-editor{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+.atem-textarea.mono{font-family:'IBM Plex Mono',monospace;font-size:11.5px;}
+.atem-best td{color:var(--gold);}
+.atem-error:empty{display:none;}
+.atem-view-head .atem-btn{white-space:nowrap;flex-shrink:0;}
+#atemRfTable th,#atemRfTable td{padding:6px 5px;}
+#atemRfTable th{letter-spacing:0;font-size:9.5px;}

@@ -257,6 +257,17 @@
   const BPM_OPTIONS = [4.5, 5, 5.5, 6, 6.5, 7];
   const IE_OPTIONS = {'1:1': 0.5, '4:6': 0.4};
 
+  /* Zyklisches Seufzen: doppelte Einatmung durch die Nase, lange Ausatmung durch den Mund. */
+  function buildSighPattern(){
+    const phases = [
+      {kind:'in', label:'Einatmen (Nase)', ms:2000, from:0, to:0.7},
+      {kind:'in', label:'Nachatmen (Nase)', ms:1000, from:0.7, to:1},
+      {kind:'out', label:'Lang ausatmen (Mund)', ms:6000, from:1, to:0}
+    ];
+    const cycleMs = phases.reduce((sum, phase) => sum + phase.ms, 0);
+    return {bpm: 60000 / cycleMs, ie: null, cycleMs, phases};
+  }
+
   /* Phasen sind eine frei definierbare Liste, damit auch mehrteilige Muster passen.
      from/to: Füllstand des Pacers von 0 (leer) bis 1 (voll). */
   function buildBreathPattern(bpm, ie){
@@ -342,22 +353,197 @@
     };
   }
 
+  /* ---------- Resonanzfrequenz-Test ---------- */
+  const RF_STEPS = [6.5, 6, 5.5, 5, 4.5];
+  const RF_STEP_MS = 120000;
+  const RF_PAUSE_MS = 30000;
+  const RF_MIN_CYCLES = 5;
+  const RF_CLOSE_DIFFERENCE = 0.1;
+
+  function rfStepStats(beats, pattern, range){
+    const empty = {bpm: pattern.bpm, rsaMean: null, rmssd: null, artefactRate: null, cycles: 0, valid: false};
+    if(!range) return empty;
+    const segment = beatsBetween(beats, range.start, range.end);
+    const rsa = rsaSummary(beats, pacerCycles(pattern, range.start, range.end));
+    const cycles = rsa.perCycle.filter(v => v !== null).length;
+    return {
+      bpm: pattern.bpm,
+      rsaMean: rsa.mean,
+      rmssd: rmssd(segment),
+      artefactRate: artefactStats(segment).rate,
+      cycles,
+      valid: cycles >= RF_MIN_CYCLES
+    };
+  }
+
+  /* Vorschlag: größte RSA. Liegt die zweitbeste Stufe unter 10 % dahinter, bleibt es offen. */
+  function evaluateRfSteps(steps){
+    const ranked = steps.filter(step => step.valid).sort((a, b) => b.rsaMean - a.rsaMean);
+    if(!ranked.length) return {recommendedBpm: null, alternativeBpm: null, close: false};
+    const [best, second] = ranked;
+    const close = !!second && best.rsaMean > 0 && (best.rsaMean - second.rsaMean) / best.rsaMean < RF_CLOSE_DIFFERENCE;
+    return {recommendedBpm: best.bpm, alternativeBpm: close ? second.bpm : null, close};
+  }
+
+  /* ---------- Trainingspläne ---------- */
+  const PLAN_TECHNIQUES = ['spb', 'rf-test', 'sigh', 'morgen-hrv'];
+  const PLAN_DAYS = ['taeglich', 'einmalig'];
+  const PLAN_TIMES = ['morgen', 'abend', 'frei'];
+  const PLAN_MAX_MINUTES = 60;
+  const DEFAULT_BPM = 6;
+
+  function validatePlan(plan){
+    if(!plan || typeof plan !== 'object' || Array.isArray(plan)) return 'Der Plan muss ein JSON-Objekt sein.';
+    if(plan.typ !== undefined && plan.typ !== 'atmung') return 'Feld "typ" muss "atmung" sein. Radtraining-Blöcke gehören in die Blockverwaltung.';
+    if(!plan.name || typeof plan.name !== 'string') return 'Feld "name" fehlt oder ist kein Text.';
+    if(!Array.isArray(plan.weeks) || !plan.weeks.length) return 'Feld "weeks" muss ein nicht-leeres Array sein.';
+    for(let w = 0; w < plan.weeks.length; w++){
+      const week = plan.weeks[w];
+      if(!week || !Array.isArray(week.sessions)) return 'Woche ' + (w + 1) + ': "sessions" fehlt oder ist kein Array.';
+      for(let u = 0; u < week.sessions.length; u++){
+        const unit = week.sessions[u];
+        const where = 'Woche ' + (w + 1) + ', Einheit ' + (u + 1) + ': ';
+        if(!unit || typeof unit !== 'object') return where + 'keine gültige Einheit.';
+        if(!PLAN_TECHNIQUES.includes(unit.technik)) return where + 'ungültige "technik" (erlaubt: ' + PLAN_TECHNIQUES.join(', ') + ').';
+        if(!PLAN_DAYS.includes(unit.tag)) return where + 'ungültiger "tag" (erlaubt: ' + PLAN_DAYS.join(', ') + ').';
+        if(unit.zeit !== undefined && !PLAN_TIMES.includes(unit.zeit)) return where + 'ungültige "zeit" (erlaubt: ' + PLAN_TIMES.join(', ') + ').';
+        if(unit.technik === 'spb'){
+          if(unit.frequenz !== 'rf' && !BPM_OPTIONS.includes(unit.frequenz)) return where + '"frequenz" muss "rf" oder ein Wert aus ' + BPM_OPTIONS.join(', ') + ' sein.';
+          if(unit.ie !== undefined && !IE_OPTIONS[unit.ie]) return where + 'ungültiges Verhältnis "ie" (erlaubt: ' + Object.keys(IE_OPTIONS).join(', ') + ').';
+        }
+        if(unit.technik === 'spb' || unit.technik === 'sigh'){
+          if(typeof unit.dauerMin !== 'number' || unit.dauerMin < 1 || unit.dauerMin > PLAN_MAX_MINUTES) return where + '"dauerMin" muss zwischen 1 und ' + PLAN_MAX_MINUTES + ' liegen.';
+        }
+      }
+    }
+    return null;
+  }
+
+  /* Übernimmt nur bekannte Felder eines gültigen Plans. Einheiten-IDs ergeben sich aus der Position. */
+  function normalizePlan(plan, id){
+    return {
+      id,
+      name: plan.name,
+      typ: 'atmung',
+      quelle: typeof plan.quelle === 'string' ? plan.quelle : '',
+      weeks: plan.weeks.map((week, w) => ({
+        weekNote: typeof week.weekNote === 'string' ? week.weekNote : '',
+        sessions: week.sessions.map((unit, u) => {
+          const normalized = {
+            id: 'w' + (w + 1) + '-u' + (u + 1),
+            tag: unit.tag,
+            zeit: unit.zeit || 'frei',
+            technik: unit.technik,
+            hinweis: typeof unit.hinweis === 'string' ? unit.hinweis : ''
+          };
+          if(unit.technik === 'spb'){
+            normalized.frequenz = unit.frequenz;
+            normalized.ie = unit.ie || '1:1';
+          }
+          if(unit.technik === 'spb' || unit.technik === 'sigh') normalized.dauerMin = unit.dauerMin;
+          return normalized;
+        })
+      }))
+    };
+  }
+
+  function isoToDayNumber(iso){
+    const [year, month, day] = iso.split('-').map(Number);
+    return Date.UTC(year, month - 1, day) / 86400000;
+  }
+
+  function planWeekIndex(startDate, date){
+    return Math.floor((isoToDayNumber(date) - isoToDayNumber(startDate)) / 7);
+  }
+
+  function matchingRecords(records, planId, unitId, weekIndex, startDate){
+    const first = isoToDayNumber(startDate) + weekIndex * 7;
+    return records.filter(r => {
+      if(r.planId !== planId || r.unitId !== unitId) return false;
+      const day = isoToDayNumber(r.date);
+      return day >= first && day <= first + 6;
+    });
+  }
+
+  /* Einheiten eines Tages. Nicht erledigte Einheiten ziehen nichts nach sich. */
+  function unitsForDay(plan, startDate, date, records){
+    const weekIndex = planWeekIndex(startDate, date);
+    if(weekIndex < 0 || weekIndex >= plan.weeks.length) return [];
+    return plan.weeks[weekIndex].sessions.map(unit => {
+      const matches = matchingRecords(records, plan.id, unit.id, weekIndex, startDate);
+      return {
+        unit, weekIndex,
+        done: unit.tag === 'einmalig' ? matches.length > 0 : matches.some(r => r.date === date)
+      };
+    });
+  }
+
+  function weekProgress(plan, startDate, weekIndex, records){
+    let planned = 0, done = 0;
+    plan.weeks[weekIndex].sessions.forEach(unit => {
+      const matches = matchingRecords(records, plan.id, unit.id, weekIndex, startDate);
+      if(unit.tag === 'einmalig'){
+        planned += 1;
+        done += matches.length ? 1 : 0;
+      } else {
+        planned += 7;
+        done += new Set(matches.map(r => r.date)).size;
+      }
+    });
+    return {planned, done};
+  }
+
+  function resolveFrequency(frequenz, rfBpm){
+    return frequenz === 'rf' ? (rfBpm || DEFAULT_BPM) : frequenz;
+  }
+
+  const RF_TEST_UNIT = {tag:'einmalig', zeit:'frei', technik:'rf-test', hinweis:'Zu Beginn der Woche.'};
+  const spb = (zeit, dauerMin, frequenz, hinweis) => ({tag:'taeglich', zeit, technik:'spb', frequenz, ie:'1:1', dauerMin, hinweis:hinweis || ''});
+  const STANDARD_PLANS = [
+    {
+      id: 'spb-einstieg-4w',
+      name: 'Einstieg Slow-Paced Breathing (4 Wochen)',
+      typ: 'atmung',
+      quelle: 'DSHS Köln, Breathlete-Projekt: täglich, abends vor dem Einschlafen, möglichst 15 min.',
+      weeks: [
+        {sessions:[RF_TEST_UNIT, spb('abend', 10, 6)]},
+        {sessions:[spb('abend', 15, 'rf')]},
+        {sessions:[spb('abend', 15, 'rf', 'Gern bis 20 min.')]},
+        {sessions:[spb('abend', 15, 'rf', 'Gern bis 20 min.')]}
+      ]
+    },
+    {
+      id: 'hrvb-intensiv-5w',
+      name: 'HRV-Biofeedback intensiv (5 Wochen)',
+      typ: 'atmung',
+      quelle: 'Angelehnt an das Lehrer-Protokoll (2× täglich rund 20 min) und 5-Wochen-Studien zum HRV-Biofeedback.',
+      weeks: [
+        {sessions:[RF_TEST_UNIT, spb('morgen', 10, 'rf'), spb('abend', 10, 'rf')]},
+        {sessions:[spb('morgen', 20, 'rf'), spb('abend', 20, 'rf')]},
+        {sessions:[Object.assign({}, RF_TEST_UNIT, {hinweis:'Wiederholung des Tests.'}), spb('morgen', 20, 'rf'), spb('abend', 20, 'rf')]},
+        {sessions:[spb('morgen', 20, 'rf'), spb('abend', 20, 'rf')]},
+        {sessions:[spb('morgen', 20, 'rf'), spb('abend', 20, 'rf')]}
+      ]
+    }
+  ].map(plan => normalizePlan(plan, plan.id));
+
   /* ---------- Simulator ---------- */
   function createRrSimulator(options = {}){
     const {meanRr = 900, amplitude = 60, breathHz = 0.1, noiseSd = 8, artefactProb = 0.01, rng = Math.random} = options;
     let breathPhase = 0;
     let currentHz = breathHz;
+    let amplitudeScale = 1;
     const queued = [];
     function gaussian(){
       return Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * rng());
     }
     return {
-      setBreathHz(hz){ currentHz = hz; },
+      setBreathHz(hz, scale = 1){ currentHz = hz; amplitudeScale = scale; },
       /* injected = absichtlich erzeugtes Artefakt, zur Prüfung des Filters */
       next(){
         let beat = queued.shift();
         if(!beat){
-          const clean = meanRr + amplitude * Math.sin(breathPhase) + noiseSd * gaussian();
+          const clean = meanRr + amplitude * amplitudeScale * Math.sin(breathPhase) + noiseSd * gaussian();
           if(rng() < artefactProb){
             const kind = rng();
             if(kind < 0.5){            // Extraschlag: kurz, danach kompensatorisch lang
@@ -383,7 +569,9 @@
     parseHeartRateMeasurement, encodeHeartRateMeasurement,
     SignalPipeline, median,
     beatsBetween, rmssd, lnRmssd, artefactStats, signalQuality, rsaAmplitude, rsaSummary,
-    BPM_OPTIONS, IE_OPTIONS, buildBreathPattern, pacerState, pacerCycles, pacerBands, summarizeSession,
+    BPM_OPTIONS, IE_OPTIONS, DEFAULT_BPM, buildBreathPattern, buildSighPattern, pacerState, pacerCycles, pacerBands, summarizeSession,
+    RF_STEPS, RF_STEP_MS, RF_PAUSE_MS, RF_MIN_CYCLES, rfStepStats, evaluateRfSteps,
+    STANDARD_PLANS, validatePlan, normalizePlan, planWeekIndex, unitsForDay, weekProgress, resolveFrequency,
     createRrSimulator
   };
 })(window);

@@ -311,6 +311,130 @@
     eq(bands.length, 3);
   });
 
+  test('Seufzen: doppelte Einatmung, lange Ausatmung, ohne Sprung', () => {
+    const p = C.buildSighPattern();
+    eq(p.phases.length, 3); eq(p.phases[2].kind, 'out'); eq(p.cycleMs, 9000);
+    if(!(p.phases[2].ms > p.phases[0].ms + p.phases[1].ms)) throw new Error('Ausatmung nicht länger');
+    let last = C.pacerState(p, 0).level;
+    for(let t = 16; t < 30000; t += 16){
+      const level = C.pacerState(p, t).level;
+      if(Math.abs(level - last) > 0.02) throw new Error('Sprung bei ' + t);
+      last = level;
+    }
+    eq(C.pacerState(p, 2500).label, 'Nachatmen (Nase)');
+  });
+
+  /* ---------- Resonanzfrequenz-Test ---------- */
+  const rfStep = (bpm, rsaMean, cycles) => ({bpm, rsaMean, cycles:cycles === undefined ? 10 : cycles, valid:(cycles === undefined ? 10 : cycles) >= C.RF_MIN_CYCLES});
+  test('RF: Protokoll wie im Auftrag', () => {
+    eq(C.RF_STEPS.join(), '6.5,6,5.5,5,4.5'); eq(C.RF_STEP_MS, 120000); eq(C.RF_PAUSE_MS, 30000);
+  });
+  test('RF: klare Stufe wird vorgeschlagen', () => {
+    const r = C.evaluateRfSteps([rfStep(6.5, 8), rfStep(6, 9), rfStep(5.5, 14), rfStep(5, 11), rfStep(4.5, 10)]);
+    eq(r.recommendedBpm, 5.5); eq(r.close, false); eq(r.alternativeBpm, null);
+  });
+  test('RF: unter 10 % Abstand nennt beide Kandidaten', () => {
+    const r = C.evaluateRfSteps([rfStep(6, 10), rfStep(5.5, 9.5), rfStep(5, 5)]);
+    eq(r.recommendedBpm, 6); eq(r.close, true); eq(r.alternativeBpm, 5.5);
+  });
+  test('RF: genau 10 % Abstand ist nicht mehr knapp', () => {
+    const r = C.evaluateRfSteps([rfStep(6, 10), rfStep(5.5, 9)]);
+    eq(r.close, false);
+  });
+  test('RF: Stufe mit zu wenigen Zyklen zählt nicht', () => {
+    const r = C.evaluateRfSteps([rfStep(6, 50, 4), rfStep(5.5, 9)]);
+    eq(r.recommendedBpm, 5.5);
+  });
+  test('RF: ohne gültige Stufe kein Vorschlag', () => {
+    const r = C.evaluateRfSteps([rfStep(6, 50, 2)]);
+    eq(r.recommendedBpm, null); eq(r.close, false);
+  });
+  test('RF: Stufenwerte aus Schlägen, übersprungene Stufe ungültig', () => {
+    const gen = C.createRrSimulator({meanRr:900, amplitude:60, breathHz:0.1, noiseSd:0, artefactProb:0});
+    const p = new C.SignalPipeline();
+    let now = 0;
+    while(now < 130000){ const {rr} = gen.next(); now += rr; p.ingest([rr], now); }
+    p.finish();
+    const s = C.rfStepStats(p.beats, C.buildBreathPattern(6, '1:1'), {start:0, end:120000});
+    eq(s.bpm, 6); eq(s.cycles, 12); eq(s.valid, true); near(s.rsaMean, 8.9, 1.2); eq(s.artefactRate, 0);
+    eq(C.rfStepStats(p.beats, C.buildBreathPattern(5, '1:1'), null).valid, false);
+    eq(C.rfStepStats(p.beats, C.buildBreathPattern(5, '1:1'), {start:0, end:30000}).valid, false);
+  });
+
+  /* ---------- Trainingspläne ---------- */
+  const unit = o => Object.assign({tag:'taeglich', zeit:'abend', technik:'spb', frequenz:6, ie:'1:1', dauerMin:10}, o);
+  const plan = weeks => ({name:'Test', weeks:weeks.map(sessions => ({sessions}))});
+  function planError(p){ return C.validatePlan(p) || ''; }
+  test('Plan: Standardpläne sind gültig und wie im Auftrag aufgebaut', () => {
+    eq(C.STANDARD_PLANS.length, 2);
+    C.STANDARD_PLANS.forEach(p => eq(C.validatePlan(p), null, p.id));
+    const [einstieg, intensiv] = C.STANDARD_PLANS;
+    eq(einstieg.weeks.length, 4); eq(intensiv.weeks.length, 5);
+    eq(einstieg.weeks[0].sessions[0].technik, 'rf-test'); eq(einstieg.weeks[0].sessions[1].dauerMin, 10); eq(einstieg.weeks[0].sessions[1].frequenz, 6);
+    eq(einstieg.weeks[1].sessions[0].dauerMin, 15); eq(einstieg.weeks[2].sessions[0].frequenz, 'rf');
+    eq(intensiv.weeks[0].sessions.length, 3); eq(intensiv.weeks[0].sessions[1].dauerMin, 10);
+    eq(intensiv.weeks[1].sessions[1].dauerMin, 20); eq(intensiv.weeks[2].sessions[0].technik, 'rf-test');
+    eq(intensiv.weeks[4].sessions.length, 2);
+  });
+  test('Plan: Prüfung weist Fehler verständlich zurück', () => {
+    eq(C.validatePlan(plan([[unit()]])), null);
+    if(!planError(null)) throw new Error('null');
+    if(!planError([]).includes('Objekt')) throw new Error('Array');
+    if(!planError({weeks:[]}).includes('name')) throw new Error('name');
+    if(!planError({name:'x', weeks:[]}).includes('weeks')) throw new Error('weeks');
+    if(!planError({name:'x', typ:'rad', weeks:[{sessions:[]}]}).includes('typ')) throw new Error('typ');
+    if(!planError({name:'x', startDate:'2026-01-01', weeks:[{phaseLabel:'a', phaseColor:'b'}]}).includes('sessions')) throw new Error('Radblock');
+    if(!planError(plan([[unit({technik:'x'})]])).includes('technik')) throw new Error('technik');
+    if(!planError(plan([[unit({tag:'montag'})]])).includes('tag')) throw new Error('tag');
+    if(!planError(plan([[unit({zeit:'mittag'})]])).includes('zeit')) throw new Error('zeit');
+    if(!planError(plan([[unit({frequenz:4})]])).includes('frequenz')) throw new Error('frequenz 4');
+    if(!planError(plan([[unit({ie:'2:1'})]])).includes('ie')) throw new Error('ie');
+    if(!planError(plan([[unit({dauerMin:0})]])).includes('dauerMin')) throw new Error('dauer');
+    eq(C.validatePlan(plan([[unit({frequenz:'rf'})]])), null);
+    eq(C.validatePlan(plan([[{tag:'einmalig', technik:'rf-test'}]])), null);
+  });
+  test('Plan: Normalisieren verwirft Unbekanntes und vergibt IDs', () => {
+    const n = C.normalizePlan({name:'A', evil:1, weeks:[{sessions:[unit({extra:1}), {tag:'einmalig', technik:'rf-test'}]}]}, 'id1');
+    eq(n.id, 'id1'); eq(n.typ, 'atmung'); eq(n.evil, undefined); eq(n.quelle, '');
+    eq(n.weeks[0].sessions[0].id, 'w1-u1'); eq(n.weeks[0].sessions[0].extra, undefined); eq(n.weeks[0].sessions[1].id, 'w1-u2');
+    eq(n.weeks[0].sessions[1].zeit, 'frei'); eq(n.weeks[0].sessions[1].frequenz, undefined);
+  });
+  const P = C.normalizePlan(plan([[unit(), {tag:'einmalig', technik:'rf-test'}], [unit({dauerMin:15})]]), 'p');
+  const rec = (date, unitId, planId) => ({date, unitId, planId:planId || 'p'});
+  test('Plan: Wochenindex auch über Sommerzeit-Wechsel', () => {
+    eq(C.planWeekIndex('2026-10-19', '2026-10-25'), 0);
+    eq(C.planWeekIndex('2026-10-19', '2026-10-26'), 1);
+    eq(C.planWeekIndex('2026-10-19', '2026-10-18'), -1);
+    eq(C.planWeekIndex('2026-03-23', '2026-03-30'), 1);
+  });
+  test('Plan: Einheiten des Tages und erledigt-Status', () => {
+    let day = C.unitsForDay(P, '2026-11-02', '2026-11-03', []);
+    eq(day.length, 2); eq(day[0].done, false); eq(day[0].weekIndex, 0);
+    day = C.unitsForDay(P, '2026-11-02', '2026-11-03', [rec('2026-11-03', 'w1-u1')]);
+    eq(day[0].done, true);
+    day = C.unitsForDay(P, '2026-11-02', '2026-11-04', [rec('2026-11-03', 'w1-u1')]);
+    eq(day[0].done, false, 'täglich gilt neu');
+    day = C.unitsForDay(P, '2026-11-02', '2026-11-05', [rec('2026-11-03', 'w1-u2')]);
+    eq(day[1].done, true, 'einmalig bleibt erledigt');
+  });
+  test('Plan: anderer Plan und Zeit davor zählen nicht', () => {
+    eq(C.unitsForDay(P, '2026-11-02', '2026-11-03', [rec('2026-11-03', 'w1-u1', 'q')])[0].done, false);
+    eq(C.unitsForDay(P, '2026-11-02', '2026-11-05', [rec('2026-11-01', 'w1-u2')])[1].done, false);
+  });
+  test('Plan: außerhalb des Zeitraums keine Einheiten', () => {
+    eq(C.unitsForDay(P, '2026-11-02', '2026-11-01', []).length, 0);
+    eq(C.unitsForDay(P, '2026-11-02', '2026-11-16', []).length, 0);
+    eq(C.unitsForDay(P, '2026-11-02', '2026-11-15', []).length, 1);
+  });
+  test('Plan: Wochenfortschritt zählt Tage, nicht Wiederholungen', () => {
+    const r = [rec('2026-11-03', 'w1-u1'), rec('2026-11-03', 'w1-u1'), rec('2026-11-04', 'w1-u1'), rec('2026-11-04', 'w1-u2'), rec('2026-11-05', 'w1-u2')];
+    const g = C.weekProgress(P, '2026-11-02', 0, r);
+    eq(g.planned, 8); eq(g.done, 3);
+  });
+  test('Plan: persönliche Frequenz fällt ohne Test auf 6/min zurück', () => {
+    eq(C.resolveFrequency('rf', 5.5), 5.5); eq(C.resolveFrequency('rf', null), 6); eq(C.resolveFrequency(5, 5.5), 5);
+  });
+
   /* ---------- Session-Auswertung ---------- */
   function simulatedRun(){
     const gen = C.createRrSimulator({meanRr:900, amplitude:60, breathHz:0.1, noiseSd:0, artefactProb:0});
