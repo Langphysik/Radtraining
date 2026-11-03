@@ -504,7 +504,7 @@
       id: 'spb-einstieg-4w',
       name: 'Einstieg Slow-Paced Breathing (4 Wochen)',
       typ: 'atmung',
-      quelle: 'DSHS Köln, Breathlete-Projekt: täglich, abends vor dem Einschlafen, möglichst 15 min.',
+      quelle: 'Tägliche Übung am Abend, möglichst 15 min. Eine Einstiegsempfehlung, keine Studienvorgabe.',
       weeks: [
         {sessions:[RF_TEST_UNIT, spb('abend', 10, 6)]},
         {sessions:[spb('abend', 15, 'rf')]},

@@ -1358,9 +1358,20 @@
     return sessions.concat(rfResults, morning);
   }
 
+  /* Die frühere Quellenangabe des Einstiegsplans ließ sich nicht belegen. Bearbeitete Texte bleiben. */
+  const UNVERIFIED_PLAN_SOURCE = 'DSHS Köln, Breathlete-Projekt: täglich, abends vor dem Einschlafen, möglichst 15 min.';
+  async function replaceUnverifiedSource(plans){
+    const standard = Core.STANDARD_PLANS.find(p => p.id === 'spb-einstieg-4w');
+    const outdated = plans.filter(p => p.quelle === UNVERIFIED_PLAN_SOURCE);
+    if(!outdated.length) return plans;
+    outdated.forEach(p => { p.quelle = standard.quelle; });
+    await savePlans(plans);
+    return plans;
+  }
+
   async function loadPlans(){
     const stored = await RT.store.get(PLANS_KEY);
-    if(stored) return JSON.parse(stored.value);
+    if(stored) return replaceUnverifiedSource(JSON.parse(stored.value));
     // Nur beim allerersten Mal anlegen: Gelöschte Standardpläne kommen nicht zurück.
     await RT.store.set(PLANS_KEY, JSON.stringify(Core.STANDARD_PLANS));
     return JSON.parse(JSON.stringify(Core.STANDARD_PLANS));

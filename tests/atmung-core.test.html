@@ -367,6 +367,7 @@
   function planError(p){ return C.validatePlan(p) || ''; }
   test('Plan: Standardpläne sind gültig und wie im Auftrag aufgebaut', () => {
     eq(C.STANDARD_PLANS.length, 2);
+    C.STANDARD_PLANS.forEach(p => { if(/Breathlete|DSHS/.test(p.quelle)) throw new Error('Unbelegte Quelle in ' + p.id); });
     C.STANDARD_PLANS.forEach(p => eq(C.validatePlan(p), null, p.id));
     const [einstieg, intensiv] = C.STANDARD_PLANS;
     eq(einstieg.weeks.length, 4); eq(intensiv.weeks.length, 5);
