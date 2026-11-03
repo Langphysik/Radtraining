@@ -527,6 +527,137 @@
     }
   ].map(plan => normalizePlan(plan, plan.id));
 
+  /* ---------- Verlauf und Gewohnheit ---------- */
+  function dayNumberToIso(dayNumber){
+    return new Date(dayNumber * 86400000).toISOString().slice(0, 10);
+  }
+
+  function mondayOf(iso){
+    const day = isoToDayNumber(iso);
+    return day - ((day + 3) % 7);  // 01.01.1970 war ein Donnerstag
+  }
+
+  function recordMinutes(record){
+    if(typeof record.durationSec === 'number') return record.durationSec / 60;
+    return record.technik === 'rf-test' ? (RF_STEPS.length * RF_STEP_MS) / 60000 : 0;
+  }
+
+  /* Tage mit Übung in der laufenden Woche (Mo–So). Es gibt bewusst keine Serie, die reißen kann. */
+  function weekActiveDays(records, todayIso){
+    const monday = mondayOf(todayIso);
+    return new Set(records
+      .filter(r => { const d = isoToDayNumber(r.date); return d >= monday && d <= monday + 6; })
+      .map(r => r.date)).size;
+  }
+
+  function practiceHeatmap(records, todayIso, weeks){
+    const minutes = {};
+    records.forEach(r => { minutes[r.date] = (minutes[r.date] || 0) + recordMinutes(r); });
+    const today = isoToDayNumber(todayIso);
+    const first = mondayOf(todayIso) - (weeks - 1) * 7;
+    const columns = [];
+    for(let w = 0; w < weeks; w++){
+      const days = [];
+      for(let d = 0; d < 7; d++){
+        const dayNumber = first + w * 7 + d;
+        const date = dayNumberToIso(dayNumber);
+        days.push({date, minutes: minutes[date] || 0, future: dayNumber > today});
+      }
+      columns.push(days);
+    }
+    return columns;
+  }
+
+  function minutesPerWeek(records, todayIso, weeks){
+    const first = mondayOf(todayIso) - (weeks - 1) * 7;
+    const result = [];
+    for(let w = 0; w < weeks; w++){
+      const start = first + w * 7;
+      const minutes = records
+        .filter(r => { const d = isoToDayNumber(r.date); return d >= start && d <= start + 6; })
+        .reduce((sum, r) => sum + recordMinutes(r), 0);
+      result.push({weekStart: dayNumberToIso(start), minutes});
+    }
+    return result;
+  }
+
+  /* Mittelwert dieser und der vorigen Woche; pick liefert den Wert einer Session oder null. */
+  function weeklyComparison(records, todayIso, pick){
+    const monday = mondayOf(todayIso);
+    const meanFor = (start) => {
+      const values = records
+        .filter(r => { const d = isoToDayNumber(r.date); return d >= start && d <= start + 6; })
+        .map(pick)
+        .filter(v => v !== null && v !== undefined);
+      return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+    };
+    return {current: meanFor(monday), previous: meanFor(monday - 7)};
+  }
+
+  function csvCell(value){
+    if(value === null || value === undefined) return '';
+    if(typeof value === 'number') return String(value).replace('.', ',');
+    let text = String(value);
+    // Tabellenprogramme dürfen Notizen nicht als Formel ausführen.
+    if(/^[=+\-@\t\r]/.test(text)) text = "'" + text;
+    return /[";\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+
+  function sessionsToCsv(sessions){
+    const columns = [
+      ['Datum', s => s.date], ['Uhrzeit', s => s.time], ['Technik', s => s.technik], ['Plan', s => s.planId], ['Einheit', s => s.unitId],
+      ['Atemzuege/min', s => s.bpm], ['Ein:Aus', s => s.ie], ['Dauer (s)', s => s.durationSec],
+      ['RMSSD vorher', s => s.baseline && s.baseline.rmssd], ['lnRMSSD vorher', s => s.baseline && s.baseline.lnRmssd], ['HF vorher', s => s.baseline && s.baseline.hr],
+      ['RMSSD nachher', s => s.post && s.post.rmssd], ['lnRMSSD nachher', s => s.post && s.post.lnRmssd], ['HF nachher', s => s.post && s.post.hr],
+      ['RSA Mittel', s => s.rsaMean], ['RSA Zyklen', s => s.rsaCycles], ['Artefaktquote', s => s.artefactRate], ['Signal', s => s.quality],
+      ['Anspannung vorher', s => s.tensionBefore], ['Anspannung nachher', s => s.tensionAfter], ['Quelle', s => s.source], ['Notiz', s => s.note]
+    ];
+    const header = columns.map(c => csvCell(c[0])).join(';');
+    return [header].concat(sessions.map(s => columns.map(c => csvCell(c[1](s))).join(';'))).join('\r\n') + '\r\n';
+  }
+
+  /* ---------- Morgen-HRV ---------- */
+  const MORNING_SETTLE_MS = 30000;
+  const MORNING_MEASURE_MS = 90000;
+  const MORNING_MIN_BEATS = 60;
+  const MORNING_MEAN_DAYS = 7;
+  const MORNING_MEAN_MIN = 3;
+  const MORNING_BAND_DAYS = 30;
+  const MORNING_BAND_MIN = 7;
+  const MORNING_BAND_SD = 0.5;
+  const MORNING_MAX_AGE_DAYS = 3;
+
+  /* Simulator und gestörte Messungen bleiben draußen. Je Tag zählt die letzte Messung. */
+  function morningSeries(entries){
+    const byDate = {};
+    entries.forEach(e => {
+      if(e.source !== 'sim' && e.quality !== 'schlecht' && typeof e.lnRmssd === 'number') byDate[e.date] = e;
+    });
+    const list = Object.keys(byDate).sort().map(date => ({date, day: isoToDayNumber(date), ln: byDate[date].lnRmssd}));
+    return list.map(point => {
+      const within = days => list.filter(p => p.day <= point.day && p.day > point.day - days).map(p => p.ln);
+      const mean = values => values.reduce((sum, v) => sum + v, 0) / values.length;
+      const week = within(MORNING_MEAN_DAYS);
+      const month = within(MORNING_BAND_DAYS);
+      let bandLow = null, bandHigh = null;
+      if(month.length >= MORNING_BAND_MIN){
+        const m = mean(month);
+        const sd = Math.sqrt(month.reduce((sum, v) => sum + (v - m) * (v - m), 0) / (month.length - 1));
+        bandLow = m - MORNING_BAND_SD * sd;
+        bandHigh = m + MORNING_BAND_SD * sd;
+      }
+      return {date: point.date, ln: point.ln, mean7: week.length >= MORNING_MEAN_MIN ? mean(week) : null, bandLow, bandHigh};
+    });
+  }
+
+  /* Nur für den Hinweis in der Trainingsansicht. Veraltete Messungen lösen ihn nicht aus. */
+  function morningBelowBand(series, todayIso){
+    const latest = series[series.length - 1];
+    if(!latest || latest.mean7 === null || latest.bandLow === null) return false;
+    if(isoToDayNumber(todayIso) - isoToDayNumber(latest.date) > MORNING_MAX_AGE_DAYS) return false;
+    return latest.mean7 < latest.bandLow;
+  }
+
   /* ---------- Simulator ---------- */
   function createRrSimulator(options = {}){
     const {meanRr = 900, amplitude = 60, breathHz = 0.1, noiseSd = 8, artefactProb = 0.01, rng = Math.random} = options;
@@ -572,6 +703,8 @@
     BPM_OPTIONS, IE_OPTIONS, DEFAULT_BPM, buildBreathPattern, buildSighPattern, pacerState, pacerCycles, pacerBands, summarizeSession,
     RF_STEPS, RF_STEP_MS, RF_PAUSE_MS, RF_MIN_CYCLES, rfStepStats, evaluateRfSteps,
     STANDARD_PLANS, validatePlan, normalizePlan, planWeekIndex, unitsForDay, weekProgress, resolveFrequency,
+    segmentStats, recordMinutes, weekActiveDays, practiceHeatmap, minutesPerWeek, weeklyComparison, sessionsToCsv,
+    MORNING_SETTLE_MS, MORNING_MEASURE_MS, MORNING_MIN_BEATS, morningSeries, morningBelowBand,
     createRrSimulator
   };
 })(window);

@@ -435,6 +435,93 @@
     eq(C.resolveFrequency('rf', 5.5), 5.5); eq(C.resolveFrequency('rf', null), 6); eq(C.resolveFrequency(5, 5.5), 5);
   });
 
+  /* ---------- Verlauf ---------- */
+  const practice = (date, durationSec) => ({date, durationSec, technik:'spb'});
+  test('Verlauf: Übungstage der Woche laufen von Montag bis Sonntag', () => {
+    const r = [practice('2026-11-01', 60), practice('2026-11-02', 60), practice('2026-11-02', 60), practice('2026-11-04', 60), practice('2026-11-09', 60)];
+    eq(C.weekActiveDays(r, '2026-11-03'), 2);   // Di, 03.11.: Mo 02.11. und Mi 04.11.
+    eq(C.weekActiveDays(r, '2026-11-08'), 2);   // Sonntag gehört noch dazu
+    eq(C.weekActiveDays(r, '2026-11-01'), 1);   // Vorwoche
+    eq(C.weekActiveDays([], '2026-11-03'), 0);
+  });
+  test('Verlauf: Heatmap hat 12 Wochen ab Montag und markiert Zukunft', () => {
+    const h = C.practiceHeatmap([practice('2026-11-03', 600), practice('2026-11-03', 300)], '2026-11-03', 12);
+    eq(h.length, 12); eq(h[0].length, 7);
+    eq(h[11][0].date, '2026-11-02'); eq(h[11][1].date, '2026-11-03'); eq(h[11][1].minutes, 15);
+    eq(h[11][1].future, false); eq(h[11][2].future, true);
+    eq(h[0][0].date, '2026-08-17');
+  });
+  test('Verlauf: Heatmap bleibt über Sommerzeit-Wechsel korrekt', () => {
+    const h = C.practiceHeatmap([], '2026-11-03', 12);
+    h.forEach((week, i) => { if(i) eq(C.planWeekIndex(h[i - 1][0].date, week[0].date), 1); });
+  });
+  test('Verlauf: Minuten je Woche, auch mit Testeintrag', () => {
+    const w = C.minutesPerWeek([practice('2026-11-03', 600), {date:'2026-11-04', technik:'rf-test'}, practice('2026-10-27', 300)], '2026-11-03', 3);
+    eq(w.length, 3); eq(w[2].weekStart, '2026-11-02'); eq(w[2].minutes, 20); eq(w[1].minutes, 5); eq(w[0].minutes, 0);
+  });
+  test('Verlauf: Wochenvergleich überspringt fehlende Werte', () => {
+    const r = [{date:'2026-11-03', v:14}, {date:'2026-11-04', v:null}, {date:'2026-10-27', v:10}, {date:'2026-10-28', v:12}];
+    const c = C.weeklyComparison(r, '2026-11-05', x => x.v);
+    eq(c.current, 14); eq(c.previous, 11);
+    eq(C.weeklyComparison([], '2026-11-05', x => x.v).current, null);
+  });
+  test('CSV: deutsches Trennzeichen, Dezimalkomma und sichere Notizen', () => {
+    const csv = C.sessionsToCsv([{date:'2026-11-03', time:'20:15', technik:'spb', bpm:4.5, ie:'1:1', durationSec:600, baseline:{rmssd:15.5, lnRmssd:2.74, hr:60}, post:null, rsaMean:5.3, artefactRate:0, tensionBefore:0, tensionAfter:null, note:'a;"b"'},
+      {date:'2026-11-04', technik:'sigh', note:'=SUMME(A1)'}]);
+    const lines = csv.split('\r\n');
+    eq(lines.length, 4); eq(lines[3], '');
+    const header = lines[0].split(';');
+    const row = lines[1].split(';');
+    eq(row[header.indexOf('Atemzuege/min')], '4,5');
+    eq(row[header.indexOf('RMSSD vorher')], '15,5');
+    eq(row[header.indexOf('Anspannung vorher')], '0');
+    eq(row[header.indexOf('Anspannung nachher')], '');
+    if(!lines[1].endsWith(String.fromCharCode(34) + 'a;' + String.fromCharCode(34, 34) + 'b' + String.fromCharCode(34, 34, 34))) throw new Error('Quote: ' + lines[1]);
+    if(!lines[2].endsWith("'=SUMME(A1)")) throw new Error('Formel: ' + lines[2]);
+  });
+
+  /* ---------- Morgen-HRV ---------- */
+  const morning = (date, lnRmssd, extra) => Object.assign({date, lnRmssd, source:'ble', quality:'gut'}, extra);
+  function dayList(start, values){
+    return values.map((ln, i) => {
+      const d = new Date(Date.UTC(2026, 9, start + i));
+      return morning(d.toISOString().slice(0, 10), ln);
+    });
+  }
+  test('Morgen: Protokoll 2 min, erste 30 s verworfen', () => {
+    eq(C.MORNING_SETTLE_MS + C.MORNING_MEASURE_MS, 120000); eq(C.MORNING_SETTLE_MS, 30000);
+  });
+  test('Morgen: 7-Tage-Mittel erst ab 3 Werten, Band erst ab 7', () => {
+    const s = C.morningSeries(dayList(1, [3, 3.2, 3.4, 3, 3, 3, 3.1]));
+    eq(s[1].mean7, null); near(s[2].mean7, 3.2, 1e-9);
+    eq(s[5].bandLow, null);
+    if(!(s[6].bandLow < s[6].bandHigh)) throw new Error('Band');
+  });
+  test('Morgen: 7-Tage-Mittel und Band sind richtig berechnet', () => {
+    const values = [3, 3.2, 3, 3.2, 3, 3.2, 3, 3.2];
+    const s = C.morningSeries(dayList(1, values));
+    const last = s[s.length - 1];
+    const week = values.slice(-7), m = week.reduce((a, b) => a + b) / 7;
+    near(last.mean7, m, 1e-9);
+    const all = values.reduce((a, b) => a + b) / 8;
+    const sd = Math.sqrt(values.reduce((a, b) => a + (b - all) * (b - all), 0) / 7);
+    near(last.bandLow, all - 0.5 * sd, 1e-9); near(last.bandHigh, all + 0.5 * sd, 1e-9);
+  });
+  test('Morgen: Simulator, gestörte Messung und Doppelmessung', () => {
+    const s = C.morningSeries([morning('2026-10-01', 3), morning('2026-10-01', 3.5), morning('2026-10-02', 9, {source:'sim'}), morning('2026-10-03', 9, {quality:'schlecht'}), morning('2026-10-04', null)]);
+    eq(s.length, 1); eq(s[0].ln, 3.5);
+  });
+  test('Morgen: Hinweis nur unter dem Band und bei aktuellen Daten', () => {
+    const base = Array(14).fill(0).map((_, i) => 3.5 + (i % 2) * 0.1);
+    const s = C.morningSeries(dayList(1, base.concat([3, 2.9, 2.8, 3, 2.9, 3, 2.9])));
+    const lastDate = s[s.length - 1].date;
+    eq(C.morningBelowBand(s, lastDate), true);
+    eq(C.morningBelowBand(s, '2026-10-30'), false, 'veraltet');
+    const fine = C.morningSeries(dayList(1, base.concat(base)));
+    eq(C.morningBelowBand(fine, fine[fine.length - 1].date), false);
+    eq(C.morningBelowBand([], '2026-10-30'), false);
+  });
+
   /* ---------- Session-Auswertung ---------- */
   function simulatedRun(){
     const gen = C.createRrSimulator({meanRr:900, amplitude:60, breathHz:0.1, noiseSd:0, artefactProb:0});

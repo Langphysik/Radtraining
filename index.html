@@ -268,6 +268,7 @@
   </header>
 
   <section>
+    <div id="atemToday"></div>
     <details class="collapsible" id="atemNav">
       <summary class="section-title"><span class="caret">▸</span>Atmung &amp; HRV</summary>
       <div class="collapsible-body block-manager">
@@ -387,6 +388,7 @@
 
   <section>
     <h2 class="section-title">Heute</h2>
+    <div id="atemHrvHint"></div>
     <div class="today-card" id="todayCard"></div>
   </section>
 
@@ -570,7 +572,9 @@
 
   /* ============ Export / Import (full backup) ============ */
   function downloadJSON(obj, filename){
-    const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
+    downloadBlob(new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'}), filename);
+  }
+  function downloadBlob(blob, filename){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename;
@@ -1494,7 +1498,7 @@
     renderAll();
   }
   // Schnittstelle für das Atmung-Modul (atmung.js)
-  window.RT = {store, downloadJSON, escapeHtml, uid, toISODate};
+  window.RT = {store, downloadJSON, downloadBlob, escapeHtml, uid, toISODate};
   initApp();
 })();
 </script>

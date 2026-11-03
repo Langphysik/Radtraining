@@ -13,6 +13,7 @@
   const RF_RESULTS_KEY = 'atem:rf-results';
   const PLANS_KEY = 'atem:plans';
   const ACTIVE_PLAN_KEY = 'atem:active-plan';
+  const MORNING_KEY = 'atem:morning';
   const HARD_TRAINING_TAGS = ['threshold', 'vo2max'];
   const SIM_PROFILES = {
     normal: {label:'Normal (900 ± 60 ms)', meanRr:900, amplitude:60},
@@ -51,7 +52,8 @@
     vibrate: false,
     showFeedback: true,
     eveningMode: 'auto',  // auto | an | aus
-    keepRr: false
+    keepRr: false,
+    weeklyGoal: 5
   };
   async function loadSettings(){
     try{
@@ -375,6 +377,7 @@
 
       const busy = signal.status === 'verbinde';
       byId('atemConnect').disabled = !ble.supported || busy;
+      byId('atemConnect').hidden = signalActive();
       byId('atemReconnect').hidden = !(ble.device && signal.status === 'unterbrochen');
       byId('atemDisconnect').hidden = !signalActive();
       byId('atemSimToggle').textContent = sim.running ? 'Simulator stoppen' : 'Simulator starten';
@@ -819,7 +822,7 @@
         '<p class="atem-hint" id="atemRunHidden" hidden>Der Bildschirm war zwischendurch aus. Dabei können Pacer und Hinweise ausgesetzt haben.</p>' +
         '<div class="atem-card" id="atemRunFeedback">' +
           '<canvas class="atem-curve atem-curve-small" id="atemRunCurve"></canvas>' +
-          '<div class="atem-rsa-row"><div><div class="atem-rsa-value" id="atemRunRsa">–</div><div class="atem-rsa-label">RSA letzter Atemzyklus</div></div>' +
+          '<div class="atem-rsa-row" id="atemRunRsaRow"><div><div class="atem-rsa-value" id="atemRunRsa">–</div><div class="atem-rsa-label">RSA letzter Atemzyklus</div></div>' +
           '<canvas class="atem-spark" id="atemRunSpark"></canvas></div>' +
         '</div>' +
         '<div class="atem-actions atem-run-actions">' +
@@ -827,6 +830,7 @@
           '<button class="atem-btn" id="atemRunNext"></button>' +
         '</div>' +
       '</div>';
+    byId('atemRunRsaRow').hidden = !steps.some(step => step.kind === 'pacer');
     byId('atemRunNext').addEventListener('click', () => enterStep(index + 1));
     byId('atemRunReconnect').addEventListener('click', () => ble.open());
     byId('atemRunToggle').addEventListener('click', () => {
@@ -1157,7 +1161,7 @@
         '<div class="atem-card">' +
           '<h3 class="atem-card-title">So läuft der Test</h3>' +
           '<p class="atem-hint">Je 2 min Pacer bei ' + Core.RF_STEPS.map(fmtBpm).join(', ') + ' Atemzügen/min, dazwischen 30 s freie Atmung. Das dauert rund ' + totalMin + ' min. Der Vorschlag ist die Stufe mit der größten RSA-Amplitude.</p>' +
-          '<p class="atem-hint">Der Test ist eine Option, keine Voraussetzung: Laut Metaanalyse (Lehrer et al. 2020) bringt die individuelle Resonanzfrequenz keinen nachgewiesenen Zusatznutzen gegenüber 6/min.</p>' +
+          '<p class="atem-hint">Der Test ist eine Option, keine Voraussetzung: Auch mit festen 6/min stieg die RMSSD in Studien (Laborde et al. 2022). Er bewertet nur die RSA und ist deshalb eine Vereinfachung, Details unter „Wissen“.</p>' +
         '</div>' +
         connectionCardsHtml(true) +
         cueOptionsHtml(false) +
@@ -1300,7 +1304,7 @@
     {
       id: 'akut-sigh',
       title: 'Akut: Zyklisches Seufzen',
-      text: '5 min bei Nervosität oder vor dem Wettkampf (Balban et al. 2023).',
+      text: '5 min. Täglich geübt besserte es die Stimmung stärker als Meditation (Balban et al. 2023); vor Wettkämpfen nicht untersucht.',
       preset: {technik:'sigh', bpm:null, ie:null, durationMin:5, title:'Akut: Zyklisches Seufzen', hinweis:'Doppelte Einatmung durch die Nase, lange Ausatmung durch den Mund.'}
     },
     {
@@ -1316,6 +1320,43 @@
       preset: {technik:'spb', bpm:6, ie:'1:1', durationMin:10, title:'Regeneration nach dem Training', hinweis:'Die Evidenz für einen Leistungseffekt ist schwächer als für Stress und Wohlbefinden.'}
     }
   ];
+
+  function unitLabel(unit, rfBpm){
+    const time = TIME_LABELS[unit.zeit] ? TIME_LABELS[unit.zeit] + ' · ' : '';
+    if(unit.technik === 'rf-test') return time + 'Resonanzfrequenz-Test';
+    if(unit.technik === 'morgen-hrv') return time + 'Morgen-HRV';
+    if(unit.technik === 'sigh') return time + unit.dauerMin + ' min zyklisches Seufzen';
+    const frequency = unit.frequenz === 'rf'
+      ? 'persönliche Frequenz (' + fmtBpm(Core.resolveFrequency('rf', rfBpm)) + '/min' + (rfBpm ? '' : ', noch kein Test') + ')'
+      : fmtBpm(unit.frequenz) + '/min';
+    return time + unit.dauerMin + ' min bei ' + frequency;
+  }
+
+  function launchPlanUnit(plan, startDate, unitId, rfBpm){
+    const weekIndex = Core.planWeekIndex(startDate, todayIso());
+    const unit = plan.weeks[weekIndex].sessions.find(u => u.id === unitId);
+    const link = {planId:plan.id, unitId:unit.id, title:plan.name + ' · Woche ' + (weekIndex + 1)};
+    if(unit.technik === 'rf-test') launchView('rf', link);
+    else if(unit.technik === 'morgen-hrv') launchView('morgen', link);
+    else if(unit.technik === 'sigh') launchView('session', Object.assign({technik:'sigh', bpm:null, ie:null, durationMin:unit.dauerMin, hinweis:unit.hinweis}, link));
+    else launchView('session', Object.assign({
+      technik: 'spb',
+      bpm: Core.resolveFrequency(unit.frequenz, rfBpm),
+      ie: unit.ie,
+      durationMin: unit.dauerMin,
+      hinweis: unit.hinweis
+    }, link));
+  }
+
+  function triggerSentence(trigger){
+    return 'Wenn ' + trigger + ', dann starte ich die Atem-Session.';
+  }
+
+  /* Alles, was eine Plan-Einheit als erledigt markieren kann. */
+  async function loadPlanRecords(){
+    const [sessions, rfResults, morning] = await Promise.all([loadSessions(), loadRfResults(), loadMorning()]);
+    return sessions.concat(rfResults, morning);
+  }
 
   async function loadPlans(){
     const stored = await RT.store.get(PLANS_KEY);
@@ -1363,17 +1404,6 @@
     // Bleiben bei Fehlern erhalten: Neuzeichnen darf eingegebenen Text nicht verwerfen.
     let editorDraft = null, pasteDraft = '';
 
-    function unitLabel(unit){
-      const time = TIME_LABELS[unit.zeit] ? TIME_LABELS[unit.zeit] + ' · ' : '';
-      if(unit.technik === 'rf-test') return time + 'Resonanzfrequenz-Test';
-      if(unit.technik === 'morgen-hrv') return time + 'Morgen-HRV';
-      if(unit.technik === 'sigh') return time + unit.dauerMin + ' min zyklisches Seufzen';
-      const frequency = unit.frequenz === 'rf'
-        ? 'persönliche Frequenz (' + fmtBpm(Core.resolveFrequency('rf', rfBpm)) + '/min' + (rfBpm ? '' : ', noch kein Test') + ')'
-        : fmtBpm(unit.frequenz) + '/min';
-      return time + unit.dauerMin + ' min bei ' + frequency;
-    }
-
     function dayPart(unit){
       return unit.tag === 'einmalig' ? 'einmal diese Woche' : 'täglich';
     }
@@ -1395,7 +1425,7 @@
           (activePlan.weeks[weekIndex].weekNote ? '<p class="atem-hint">' + RT.escapeHtml(activePlan.weeks[weekIndex].weekNote) + '</p>' : '') +
           '<div class="atem-units" id="atemTodayUnits">' + (units.length ? units.map(item =>
             '<div class="atem-unit' + (item.done ? ' done' : '') + '">' +
-              '<div><div class="atem-unit-title">' + RT.escapeHtml(unitLabel(item.unit)) + '</div>' +
+              '<div><div class="atem-unit-title">' + RT.escapeHtml(unitLabel(item.unit, rfBpm)) + '</div>' +
               (item.unit.hinweis ? '<div class="atem-muted">' + RT.escapeHtml(item.unit.hinweis) + '</div>' : '') + '</div>' +
               (item.done
                 ? '<span class="atem-unit-done">erledigt</span>'
@@ -1405,10 +1435,15 @@
       const overview = activePlan.weeks.map((week, i) => {
         const progress = Core.weekProgress(activePlan, active.startDate, i, records);
         return '<li class="' + (i === weekIndex ? 'current' : '') + '"><strong>Woche ' + (i + 1) + '</strong> <span class="atem-muted">' + progress.done + ' von ' + progress.planned + '</span>' +
-          '<div class="atem-muted">' + week.sessions.map(unit => RT.escapeHtml(unitLabel(unit) + ', ' + dayPart(unit))).join('<br>') + '</div></li>';
+          '<div class="atem-muted">' + week.sessions.map(unit => RT.escapeHtml(unitLabel(unit, rfBpm) + ', ' + dayPart(unit))).join('<br>') + '</div></li>';
       }).join('');
       return '<div class="atem-card" id="atemActivePlan"><h3 class="atem-card-title">Aktueller Plan</h3>' +
         '<div class="atem-plan-name">' + RT.escapeHtml(activePlan.name) + '</div>' + body +
+        '<div class="atem-trigger' + (active.trigger ? '' : ' empty') + '" id="atemTrigger">' +
+          (active.trigger ? '<p class="atem-hint" id="atemTriggerSentence">' + RT.escapeHtml(triggerSentence(active.trigger)) + '</p>' : '<p class="atem-hint">Lege fest, woran du die Übung knüpfst. Solche Wenn-Dann-Pläne helfen, Vorsätze umzusetzen (Gollwitzer &amp; Sheeran 2006).</p>') +
+          '<label class="atem-field"><span>Wenn …</span><input class="atem-select" type="text" id="atemTriggerInput" maxlength="120" placeholder="ich abends ins Bett gehe" value="' + RT.escapeHtml(active.trigger || '') + '"></label>' +
+          '<div class="atem-muted">… dann starte ich die Atem-Session.</div>' +
+        '</div>' +
         '<details class="atem-week-overview"><summary>Wochenübersicht</summary><ol class="atem-weeks">' + overview + '</ol></details>' +
         '<div class="atem-actions atem-plan-actions">' +
           '<label class="atem-field"><span>Startdatum</span><input class="atem-select" type="date" id="atemPlanStart" value="' + active.startDate + '"></label>' +
@@ -1466,6 +1501,8 @@
         planListHtml() + importHtml();
       const startInput = holder.querySelector('#atemPlanStart');
       if(startInput) startInput.addEventListener('change', e => changeStartDate(e.target.value));
+      const triggerInput = holder.querySelector('#atemTriggerInput');
+      if(triggerInput) triggerInput.addEventListener('change', e => change(() => RT.store.set(ACTIVE_PLAN_KEY, JSON.stringify(Object.assign({}, active, {trigger:e.target.value.trim()})))));
       holder.querySelector('#atemPlanFile').addEventListener('change', importFile);
       if(pasteDraft){
         const paste = holder.querySelector('#atemPlanPaste');
@@ -1476,13 +1513,13 @@
 
     async function refresh(){
       try{
-        const [loadedPlans, loadedActive, sessions, rfResults, latest, hard] = await Promise.all([
-          loadPlans(), loadActivePlan(), loadSessions(), loadRfResults(), latestRealRf(), hardTrainingToday()
+        const [loadedPlans, loadedActive, loadedRecords, latest, hard] = await Promise.all([
+          loadPlans(), loadActivePlan(), loadPlanRecords(), latestRealRf(), hardTrainingToday()
         ]);
         plans = loadedPlans;
         active = loadedActive;
         activePlan = active ? plans.find(p => p.id === active.planId) || null : null;
-        records = sessions.concat(rfResults);
+        records = loadedRecords;
         rfBpm = latest ? latest.recommendedBpm : null;
         hardToday = hard;
       }catch(e){
@@ -1531,33 +1568,16 @@
       addImportedPlan(text);
     }
 
-    function startUnit(unitId){
-      const weekIndex = Core.planWeekIndex(active.startDate, todayIso());
-      const unit = activePlan.weeks[weekIndex].sessions.find(u => u.id === unitId);
-      const title = activePlan.name + ' · Woche ' + (weekIndex + 1);
-      const link = {planId:activePlan.id, unitId:unit.id, title};
-      if(unit.technik === 'rf-test') launchView('rf', link);
-      else if(unit.technik === 'morgen-hrv') launchView('morgen', link);
-      else if(unit.technik === 'sigh') launchView('session', Object.assign({technik:'sigh', bpm:null, ie:null, durationMin:unit.dauerMin, hinweis:unit.hinweis}, link));
-      else launchView('session', Object.assign({
-        technik: 'spb',
-        bpm: Core.resolveFrequency(unit.frequenz, rfBpm),
-        ie: unit.ie,
-        durationMin: unit.dauerMin,
-        hinweis: unit.hinweis
-      }, link));
-    }
-
     holder.addEventListener('click', event => {
       const button = event.target.closest('[data-action]');
       if(!button) return;
       const id = button.dataset.id;
       const plan = plans.find(p => p.id === id);
       switch(button.dataset.action){
-        case 'start-unit': startUnit(button.dataset.unit); break;
+        case 'start-unit': launchPlanUnit(activePlan, active.startDate, button.dataset.unit, rfBpm); break;
         case 'quick': launchView('session', QUICK_STARTS.find(q => q.id === button.dataset.quick).preset); break;
         case 'activate':
-          change(() => RT.store.set(ACTIVE_PLAN_KEY, JSON.stringify({planId:id, startDate:todayIso()})));
+          change(() => RT.store.set(ACTIVE_PLAN_KEY, JSON.stringify({planId:id, startDate:todayIso(), trigger:''})));
           break;
         case 'deactivate':
           if(confirm('Plan beenden? Deine Sessions bleiben erhalten.')) change(() => RT.store.delete(ACTIVE_PLAN_KEY));
@@ -1611,19 +1631,465 @@
     refresh();
   }
 
-  /* ---------- Unterseiten ---------- */
-  function renderPlannedView(text){
-    return root => {
-      root.innerHTML = '<div class="atem-card"><p class="atem-hint">' + RT.escapeHtml(text) + '</p></div>';
+  /* ---------- Diagramme ---------- */
+  /* Für dunkle Flächen geprüft (Helligkeit, Sättigung, Farbfehlsichtigkeit, Kontrast).
+     Die helleren App-Farben fallen als Diagrammlinien durch diese Prüfung. */
+  const CHART_BLUE = '#3987e5';
+  const CHART_AMBER = '#c98500';
+  function cssToken(name){
+    return getComputedStyle(viewEl).getPropertyValue(name).trim();
+  }
+  function fmtShortDate(iso){
+    const parts = iso.split('-');
+    return parts[2] + '.' + parts[1] + '.';
+  }
+  function chartHtml(id, title){
+    return '<div class="atem-card"><h3 class="atem-card-title">' + title + '</h3>' +
+      '<div class="atem-chart"><canvas id="' + id + '" role="img" aria-label="' + title + '"></canvas></div>' +
+      '<p class="atem-hint" id="' + id + 'Empty" hidden>Noch keine Daten.</p></div>';
+  }
+  /* Eigene Chart.js-Instanzen: Die Diagramme des Radtrainings werden getrennt verwaltet. */
+  function createChartSet(){
+    const charts = [];
+    return {
+      draw(id, labels, datasets, options){
+        const canvas = document.getElementById(id);
+        const hasData = datasets.some(set => set.data.some(v => v !== null && v !== undefined));
+        document.getElementById(id + 'Empty').hidden = hasData;
+        canvas.parentElement.hidden = !hasData;
+        if(!hasData) return;
+        if(typeof Chart === 'undefined'){
+          const note = document.getElementById(id + 'Empty');
+          note.hidden = false;
+          note.textContent = 'Das Diagramm konnte nicht geladen werden.';
+          canvas.parentElement.hidden = true;
+          return;
+        }
+        const grid = cssToken('--line-soft'), ink = cssToken('--ink-dim');
+        charts.push(new Chart(canvas, {
+          type: options.type || 'line',
+          data: {labels, datasets},
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: {mode:'index', intersect:false},
+            plugins: {
+              legend: {display: datasets.length >= 2, labels: {color:ink, boxWidth:12, boxHeight:2, filter: item => !item.text.startsWith('_')}},
+              tooltip: {filter: item => !item.dataset.label.startsWith('_')}
+            },
+            scales: {
+              x: {grid:{display:false}, ticks:{color:ink, maxRotation:0, autoSkipPadding:14}},
+              y: Object.assign({grid:{color:grid}, ticks:{color:ink}, title:{display:!!options.yTitle, text:options.yTitle, color:ink}}, options.y || {})
+            }
+          }
+        }));
+      },
+      destroy(){
+        charts.forEach(chart => chart.destroy());
+        charts.length = 0;
+      }
     };
   }
+  function lineDataset(label, data, color, extra){
+    return Object.assign({label, data, borderColor:color, backgroundColor:color, borderWidth:2, pointRadius:4, pointHoverRadius:5, tension:0, spanGaps:true}, extra);
+  }
+
+  /* ---------- Verlauf ---------- */
+  const TECHNIK_LABELS = {spb:'Langsames Atmen', sigh:'Zyklisches Seufzen', 'rf-test':'Resonanzfrequenz-Test'};
+  const HEATMAP_WEEKS = 12;
+  const MINUTES_CHART_WEEKS = 12;
+  const WEEKLY_GOAL_OPTIONS = [3, 4, 5, 6, 7];
+
+  function renderHistoryView(root){
+    const byId = id => document.getElementById(id);
+    const chartSet = createChartSet();
+    let sessions = [], rfResults = [], plans = [];
+    let filterTechnik = '', filterPlan = '', showSimulated = false;
+    let loadError = '';
+
+    root.innerHTML = '<div id="atemHistoryBody"><p class="atem-hint">Lädt…</p></div>';
+
+    function practiceRecords(){
+      return sessions.concat(rfResults).filter(r => showSimulated || r.source !== 'sim');
+    }
+    function filteredSessions(){
+      return sessions.filter(s =>
+        (showSimulated || s.source !== 'sim') &&
+        (!filterTechnik || s.technik === filterTechnik) &&
+        (!filterPlan || (filterPlan === '-' ? !s.planId : s.planId === filterPlan)));
+    }
+
+    function summarySentences(records, today){
+      const lines = [];
+      const describe = (name, unit, digits, pick) => {
+        const {current, previous} = Core.weeklyComparison(records, today, pick);
+        if(current === null) return;
+        lines.push('Deine ' + name + ' lag diese Woche im Schnitt bei ' + fmt(current, digits) + ' ' + unit +
+          (previous === null ? '.' : ', Vorwoche ' + fmt(previous, digits) + ' ' + unit + '.'));
+      };
+      describe('RSA-Amplitude', 'bpm', 1, s => s.rsaMean);
+      describe('RMSSD vor der Session', 'ms', 1, s => s.baseline ? s.baseline.rmssd : null);
+      const both = records.filter(s => s.tensionBefore !== null && s.tensionBefore !== undefined && s.tensionAfter !== null && s.tensionAfter !== undefined);
+      if(both.length){
+        const mean = pick => both.reduce((sum, s) => sum + pick(s), 0) / both.length;
+        lines.push('Anspannung im Schnitt von ' + fmt(mean(s => s.tensionBefore), 1) + ' vorher auf ' + fmt(mean(s => s.tensionAfter), 1) + ' nachher, aus ' + both.length + ' ' + (both.length === 1 ? 'Session' : 'Sessions') + '.');
+      }
+      return lines;
+    }
+
+    function heatmapHtml(records, today){
+      const columns = Core.practiceHeatmap(records, today, HEATMAP_WEEKS);
+      const max = Math.max(20, ...columns.flat().map(day => day.minutes));
+      const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+      const labels = '<div class="atem-heat-labels">' + dayNames.map(name => '<span>' + name + '</span>').join('') + '</div>';
+      const cells = columns.map(week =>
+        '<div class="atem-heat-col">' + week.map(day => {
+          const label = fmtIsoDate(day.date) + ': ' + (day.minutes ? Math.round(day.minutes) + ' min' : 'keine Übung');
+          if(day.future) return '<span class="atem-heat-cell future"></span>';
+          const level = day.minutes ? 0.3 + 0.7 * Math.min(1, day.minutes / max) : 0;
+          return '<span class="atem-heat-cell" title="' + label + '" aria-label="' + label + '" role="img"' + (level ? ' style="background:rgba(57,135,229,' + level.toFixed(2) + ')"' : '') + '></span>';
+        }).join('') + '</div>').join('');
+      return '<div class="atem-heat">' + labels + '<div class="atem-heat-grid">' + cells + '</div></div>' +
+        '<p class="atem-hint">Kräftiger ist mehr Übungszeit. Ein ausgelassener Tag stört den Gewohnheitsaufbau kaum: Im Mittel brauchten Gewohnheiten rund 66 Tage, die Spanne reichte von 18 bis 254 (Lally et al. 2010).</p>';
+    }
+
+    function listHtml(list){
+      const planName = id => {
+        const plan = plans.find(p => p.id === id);
+        return plan ? plan.name : '';
+      };
+      const rows = list.slice().reverse().slice(0, 60).map(s =>
+        '<tr><td class="mono">' + fmtShortDate(s.date) + (s.time ? ' ' + RT.escapeHtml(s.time) : '') + '</td>' +
+        '<td>' + RT.escapeHtml(TECHNIK_LABELS[s.technik] || s.technik) + (s.source === 'sim' ? ' <span class="atem-muted">(Simulator)</span>' : '') +
+          (s.planId ? '<div class="atem-muted">' + RT.escapeHtml(planName(s.planId)) + '</div>' : '') +
+          (s.note ? '<div class="atem-muted">' + RT.escapeHtml(s.note) + '</div>' : '') + '</td>' +
+        '<td class="mono">' + (s.bpm ? fmtBpm(s.bpm) : '–') + '</td>' +
+        '<td class="mono">' + Math.round(Core.recordMinutes(s)) + '</td>' +
+        '<td class="mono">' + fmt(s.rsaMean, 1) + '</td>' +
+        '<td class="mono">' + (s.quality ? RT.escapeHtml(s.quality) : '–') + '</td></tr>').join('');
+      return rows
+        ? '<div class="table-scroll atem-list"><table class="history-table"><thead><tr><th>Datum</th><th>Einheit</th><th>/min</th><th>min</th><th>RSA</th><th>Signal</th></tr></thead><tbody id="atemHistoryRows">' + rows + '</tbody></table></div>' +
+          (list.length > 60 ? '<p class="atem-hint">Die letzten 60 von ' + list.length + '. Alle stehen im Export.</p>' : '')
+        : '<p class="atem-hint" id="atemHistoryNone">Keine passenden Sessions.</p>';
+    }
+
+    function drawCharts(list, records, today){
+      chartSet.destroy();
+      const labels = list.map(s => fmtShortDate(s.date));
+      const accent = CHART_BLUE, second = CHART_AMBER;
+      chartSet.draw('atemChartRsa', labels, [lineDataset('RSA', list.map(s => s.rsaMean), accent)], {yTitle:'bpm'});
+      chartSet.draw('atemChartRmssd', labels, [lineDataset('RMSSD', list.map(s => s.baseline ? s.baseline.rmssd : null), accent)], {yTitle:'ms'});
+      chartSet.draw('atemChartTension', labels, [
+        lineDataset('Vorher', list.map(s => s.tensionBefore), second),
+        lineDataset('Nachher', list.map(s => s.tensionAfter), accent)
+      ], {y:{min:0, max:10}});
+      const weeks = Core.minutesPerWeek(records, today, MINUTES_CHART_WEEKS);
+      chartSet.draw('atemChartMinutes', weeks.map(w => fmtShortDate(w.weekStart)),
+        [{label:'Minuten', data:weeks.map(w => Math.round(w.minutes)), backgroundColor:accent, borderRadius:4, maxBarThickness:18}],
+        {type:'bar', yTitle:'min', y:{beginAtZero:true}});
+    }
+
+    function render(){
+      const holder = byId('atemHistoryBody');
+      if(!holder) return;
+      const today = todayIso();
+      const records = practiceRecords();
+      const list = filteredSessions();
+      const total = records.reduce((sum, r) => sum + Core.recordMinutes(r), 0);
+      const activeDays = Core.weekActiveDays(records, today);
+      const lines = summarySentences(list, today);
+      const planOptions = [{value:'', label:'Alle'}, {value:'-', label:'Ohne Plan'}]
+        .concat(plans.map(p => ({value:RT.escapeHtml(p.id), label:RT.escapeHtml(p.name)})));
+      holder.innerHTML =
+        (loadError ? '<p class="atem-error" role="alert">' + RT.escapeHtml(loadError) + '</p>' : '') +
+        '<div class="atem-card">' +
+          '<div class="atem-stats atem-stats-two">' +
+            '<div class="field"><div class="v atem-stat-value" id="atemWeekDays">' + activeDays + ' von ' + settings.weeklyGoal + '</div><div class="l">Tage diese Woche</div></div>' +
+            '<div class="field"><div class="v atem-stat-value" id="atemTotalMinutes">' + Math.round(total) + '</div><div class="l">Minuten gesamt</div></div>' +
+          '</div>' +
+          '<label class="atem-field atem-field-wide"><span>Wochenziel</span><select class="atem-select" id="atemWeeklyGoal">' +
+            optionsHtml(WEEKLY_GOAL_OPTIONS.map(v => ({value:v, label:v + ' von 7 Tagen'})), settings.weeklyGoal) + '</select></label>' +
+          (lines.length ? '<ul class="atem-summary" id="atemSummary">' + lines.map(line => '<li>' + RT.escapeHtml(line) + '</li>').join('') + '</ul>' : '') +
+        '</div>' +
+        '<div class="atem-card"><h3 class="atem-card-title">Letzte 12 Wochen</h3>' + heatmapHtml(records, today) + '</div>' +
+        '<div class="atem-card">' +
+          '<div class="atem-fields atem-fields-two">' +
+            '<label class="atem-field"><span>Technik</span><select class="atem-select" id="atemFilterTechnik">' +
+              optionsHtml([{value:'', label:'Alle'}, {value:'spb', label:TECHNIK_LABELS.spb}, {value:'sigh', label:TECHNIK_LABELS.sigh}], filterTechnik) + '</select></label>' +
+            '<label class="atem-field"><span>Plan</span><select class="atem-select" id="atemFilterPlan">' + optionsHtml(planOptions, filterPlan) + '</select></label>' +
+          '</div>' +
+          '<div class="atem-checks">' + checkHtml('atemShowSim', 'Simulatordaten einbeziehen', showSimulated) + '</div>' +
+        '</div>' +
+        chartHtml('atemChartRsa', 'RSA-Amplitude je Session') +
+        chartHtml('atemChartRmssd', 'RMSSD vor der Session') +
+        chartHtml('atemChartTension', 'Anspannung vorher und nachher') +
+        chartHtml('atemChartMinutes', 'Minuten pro Woche') +
+        '<div class="atem-card"><h3 class="atem-card-title">Sessions</h3>' + listHtml(list) +
+          '<div class="atem-actions atem-export">' +
+            '<button class="atem-btn" id="atemExportJson">Sessions als JSON</button>' +
+            '<button class="atem-btn" id="atemExportCsv">Sessions als CSV</button>' +
+          '</div>' +
+        '</div>';
+
+      byId('atemWeeklyGoal').addEventListener('change', e => { saveSetting('weeklyGoal', Number(e.target.value)); render(); });
+      byId('atemFilterTechnik').addEventListener('change', e => { filterTechnik = e.target.value; render(); });
+      byId('atemFilterPlan').addEventListener('change', e => { filterPlan = e.target.value; render(); });
+      byId('atemShowSim').addEventListener('change', e => { showSimulated = e.target.checked; render(); });
+      byId('atemExportJson').addEventListener('click', () => {
+        RT.downloadJSON({app:'radtraining-atmung', exportedAt:new Date().toISOString(), sessions:filteredSessions()}, 'atmung-sessions-' + today + '.json');
+      });
+      byId('atemExportCsv').addEventListener('click', () => {
+        // Das BOM sorgt dafür, dass Excel die Umlaute richtig liest.
+        const blob = new Blob(['﻿' + Core.sessionsToCsv(filteredSessions())], {type:'text/csv;charset=utf-8'});
+        RT.downloadBlob(blob, 'atmung-sessions-' + today + '.csv');
+      });
+      drawCharts(list, records, today);
+    }
+
+    (async function load(){
+      try{
+        [sessions, rfResults, plans] = await Promise.all([loadSessions(), loadRfResults(), loadPlans()]);
+      }catch(e){
+        loadError = 'Daten konnten nicht geladen werden: ' + e.message;
+      }
+      render();
+    })();
+
+    return () => chartSet.destroy();
+  }
+
+  /* ---------- Morgen-HRV ---------- */
+  async function loadMorning(){
+    const stored = await RT.store.get(MORNING_KEY);
+    return stored ? JSON.parse(stored.value) : [];
+  }
+
+  function renderMorningView(root, preset){
+    const byId = id => document.getElementById(id);
+    const chartSet = createChartSet();
+    let runner = null;
+    let detachSetup = null;
+
+    async function showSetup(message){
+      viewEl.classList.remove('atem-running');
+      root.innerHTML =
+        (preset ? '<div class="atem-card atem-preset"><h3 class="atem-card-title">' + RT.escapeHtml(preset.title) + '</h3></div>' : '') +
+        (message ? '<p class="atem-hint" id="atemMorningMessage">' + RT.escapeHtml(message) + '</p>' : '') +
+        '<div class="atem-card">' +
+          '<h3 class="atem-card-title">So läuft die Messung</h3>' +
+          '<p class="atem-hint">Morgens nach dem Aufwachen, liegend oder sitzend, immer möglichst gleich. Atme ganz normal, ohne Pacer. Die Messung dauert 2 min, die ersten 30 s werden verworfen.</p>' +
+        '</div>' +
+        connectionCardsHtml(true) +
+        '<button class="atem-btn primary atem-start" id="atemMorningStart">Messung starten</button>' +
+        '<p class="atem-hint" id="atemMorningStartHint"></p>' +
+        '<div id="atemMorningResults"></div>';
+      const updateConnection = bindConnectionCards();
+      function updateSetup(){
+        updateConnection();
+        byId('atemMorningStart').disabled = !signalActive();
+        byId('atemMorningStartHint').textContent = signalActive() ? '' : 'Die Messung braucht den Gurt: Verbinde ihn zuerst.';
+      }
+      byId('atemMorningStart').addEventListener('click', startRun);
+      signal.listeners.add(updateSetup);
+      detachSetup = () => signal.listeners.delete(updateSetup);
+      updateSetup();
+      try{
+        renderResults(await loadMorning());
+      }catch(e){
+        const holder = byId('atemMorningResults');
+        if(holder) holder.innerHTML = '<p class="atem-error" role="alert">Messungen konnten nicht geladen werden: ' + RT.escapeHtml(e.message) + '</p>';
+      }
+    }
+
+    function renderResults(entries){
+      const holder = byId('atemMorningResults');
+      if(!holder) return;
+      const series = Core.morningSeries(entries);
+      const hiddenCount = entries.length - entries.filter(e => e.source !== 'sim' && e.quality !== 'schlecht').length;
+      const latest = series[series.length - 1];
+      holder.innerHTML =
+        '<div class="atem-card" id="atemMorningLatest"><h3 class="atem-card-title">Dein Verlauf</h3>' +
+          (latest
+            ? '<div class="atem-stats atem-stats-two">' +
+                '<div class="field"><div class="v atem-stat-value">' + fmt(latest.ln, 2) + '</div><div class="l">lnRMSSD ' + fmtShortDate(latest.date) + '</div></div>' +
+                '<div class="field"><div class="v atem-stat-value">' + fmt(latest.mean7, 2) + '</div><div class="l">7-Tage-Mittel</div></div>' +
+              '</div>' +
+              (Core.morningBelowBand(series, todayIso()) ? '<p class="atem-hint" id="atemMorningBelow">Dein 7-Tage-Mittel liegt unter deinem Normalband.</p>' : '') +
+              (latest.bandLow === null ? '<p class="atem-hint">Das Normalband erscheint ab 7 Messungen, das 7-Tage-Mittel ab 3.</p>' : '')
+            : '<p class="atem-hint">Noch keine Messung.</p>') +
+          (hiddenCount ? '<p class="atem-hint">' + hiddenCount + ' ' + (hiddenCount === 1 ? 'Messung zählt' : 'Messungen zählen') + ' nicht mit (Simulator oder gestörtes Signal).</p>' : '') +
+        '</div>' +
+        chartHtml('atemChartMorning', 'lnRMSSD morgens') +
+        '<p class="atem-hint">Schattiert ist dein Normalband: Mittelwert ± 0,5 Standardabweichungen der letzten 30 Tage.</p>';
+      const labels = series.map(p => fmtShortDate(p.date));
+      const band = cssToken('--line');
+      chartSet.destroy();
+      chartSet.draw('atemChartMorning', labels, [
+        {label:'_oben', data:series.map(p => p.bandHigh), borderWidth:0, pointRadius:0, pointHitRadius:0, fill:'+1', backgroundColor:band, spanGaps:true},
+        {label:'_unten', data:series.map(p => p.bandLow), borderWidth:0, pointRadius:0, pointHitRadius:0, spanGaps:true},
+        lineDataset('Tageswert', series.map(p => p.ln), cssToken('--ink-soft'), {borderWidth:0, showLine:false}),
+        lineDataset('7-Tage-Mittel', series.map(p => p.mean7), CHART_BLUE, {pointRadius:0})
+      ], {yTitle:'lnRMSSD'});
+    }
+
+    function startRun(){
+      detachSetup();
+      detachSetup = null;
+      chartSet.destroy();
+      signal.resetRecording();
+      const source = signal.source;
+      const startedAt = new Date();
+      const steps = [
+        {label:'Einschwingen', kind:'rest', durationMs:Core.MORNING_SETTLE_MS, nextLabel:'Überspringen', restLabel:'Normal atmen'},
+        {label:'Messung', kind:'rest', durationMs:Core.MORNING_MEASURE_MS, nextLabel:'Beenden', restLabel:'Normal atmen'}
+      ];
+      runner = createStepRunner({
+        root, steps, measuring:true,
+        onFinish: ({ranges}) => {
+          runner = null;
+          finishRun(ranges[1], source, startedAt);
+        }
+      });
+    }
+
+    async function finishRun(range, source, startedAt){
+      const beats = range ? Core.beatsBetween(signal.pipeline.beats, range.start, range.end) : [];
+      const stats = range ? Core.segmentStats(signal.pipeline.beats, range) : null;
+      if(!stats || stats.beats < Core.MORNING_MIN_BEATS || stats.lnRmssd === null){
+        showSetup('Zu wenige saubere Schläge, die Messung wurde nicht gespeichert.');
+        return;
+      }
+      const artefacts = Core.artefactStats(beats);
+      const entry = {
+        id: RT.uid(),
+        startedAt: startedAt.toISOString(),
+        date: RT.toISODate(startedAt),
+        time: String(startedAt.getHours()).padStart(2, '0') + ':' + String(startedAt.getMinutes()).padStart(2, '0'),
+        technik: 'morgen-hrv',
+        planId: preset && preset.planId || null,
+        unitId: preset && preset.unitId || null,
+        rmssd: round2(stats.rmssd),
+        lnRmssd: round2(stats.lnRmssd),
+        hr: round2(stats.hr),
+        beats: stats.beats,
+        artefactRate: artefacts.rate === null ? null : Math.round(artefacts.rate * 10000) / 10000,
+        quality: artefacts.quality,
+        source
+      };
+      try{
+        const entries = await loadMorning();
+        entries.push(entry);
+        await RT.store.set(MORNING_KEY, JSON.stringify(entries));
+      }catch(e){
+        root.innerHTML = '<p class="atem-error" role="alert">Speichern fehlgeschlagen: ' + RT.escapeHtml(e.message) + '. Sichere die Messung als Datei.</p>' +
+          '<div class="atem-actions"><button class="atem-btn" id="atemMorningExport">Als JSON sichern</button></div>';
+        byId('atemMorningExport').addEventListener('click', () => RT.downloadJSON(entry, 'atmung-morgen-hrv-' + todayIso() + '.json'));
+        return;
+      }
+      const poor = entry.quality !== 'gut';
+      showSetup('Gespeichert: lnRMSSD ' + fmt(entry.lnRmssd, 2) + ', RMSSD ' + fmt(entry.rmssd, 1) + ' ms.' +
+        (entry.quality === 'schlecht' ? ' Das Signal war gestört, deshalb zählt die Messung nicht für den Verlauf.' : '') +
+        (poor ? ' Befeuchte die Elektroden und zieh den Gurt etwas fester.' : ''));
+    }
+
+    showSetup();
+    return {
+      cleanup(){
+        if(detachSetup) detachSetup();
+        if(runner) runner.stop();
+        runner = null;
+        chartSet.destroy();
+      },
+      beforeLeave(){
+        return runner ? confirm('Messung abbrechen? Sie wird nicht gespeichert.') : true;
+      }
+    };
+  }
+
+  /* ---------- Wissen ---------- */
+  const KNOWLEDGE = [
+    ['Was passiert beim langsamen Atmen?',
+      'Bei langsamer Atmung schwingen Herzfrequenz und Atmung gemeinsam (respiratorische Sinusarrhythmie), der Baroreflex wird angeregt. Eine Metaanalyse über 223 Studien fand einen Anstieg der vagal vermittelten HRV während der Übung, direkt danach und nach mehrwöchigem Training (Laborde et al. 2022, NBR; Shaffer & Meehan 2020).'],
+    ['Was bringt HRV-Biofeedback?',
+      'Über viele Anwendungen hinweg zeigte sich ein kleiner bis mittlerer Effekt, am größten bei Angst, Depressivität, Ärger sowie sportlicher und künstlerischer Leistung; je Anwendung gibt es aber nur wenige Studien (Lehrer et al. 2020). Bei selbstberichtetem Stress und selbstberichteter Angst war der Rückgang groß (Goessl et al. 2017).'],
+    ['Resonanzfrequenz',
+      'Die individuelle Resonanzfrequenz liegt bei Erwachsenen meist zwischen 4,5 und 6,5 Atemzügen/min. Fachleute bewerten sie anhand mehrerer Kriterien und erweitern den Test, wenn das Maximum am Rand bei 4,5 oder 6,5 liegt (Shaffer & Meehan 2020). Der Test in dieser App nutzt nur die RSA-Amplitude und ist deshalb eine Vereinfachung. Fällt dir eine sehr langsame Frequenz schwer, kann das zum Überatmen führen: Dann atme schneller.'],
+    ['Mit oder ohne Biofeedback?',
+      'In einer Studie mit 112 Teilnehmenden stieg die RMSSD bei 6 Atemzügen/min mit und ohne Biofeedback-Anzeige; die Stimmung war mit Anzeige insgesamt etwas positiver (Laborde et al. 2022, Psychophysiology). Du kannst die Anzeige also frei wählen.'],
+    ['Akut und im Training',
+      'Tägliche 5 min zyklisches Seufzen verbesserten in einer randomisierten Studie über einen Monat die Stimmung stärker als Achtsamkeitsmeditation (Balban et al. 2023). Wettkampfsituationen hat die Studie nicht untersucht. Veränderungen der Ruhe-HRV fanden sich nach mehrwöchigem Training (Laborde et al. 2022, NBR).'],
+    ['Warum die App auf Gewohnheit statt Serien setzt',
+      'Gewohnheiten brauchten im Median rund 66 Tage bis zur Automatisierung, mit einer Spanne von 18 bis 254 Tagen, und ein einzelner ausgelassener Tag störte kaum (Lally et al. 2010). Wenn-Dann-Pläne helfen, Ziele umzusetzen (Gollwitzer & Sheeran 2006). Punkte und Abzeichen sind in Gesundheits-Apps verbreitet, ohne dass ihre Anzahl mit besseren Bewertungen zusammenhing (Edwards et al. 2016). Die App lässt sie deshalb weg.'],
+    ['Messgrenzen',
+      'Brustgurt-Daten sind gut, aber kein Medizinprodukt, und eine einzelne Messung sagt wenig. Bei langsamer Atmung liegt die Atmung im LF-Band, LF/HF ist dann nicht als Stressindex interpretierbar und wird nicht angezeigt. Trockene Elektroden können Fehlschläge vortäuschen. Bei Herzstolpern, Schwindel oder bekannten Herzrhythmusstörungen lass es ärztlich abklären.']
+  ];
+  const SOURCES = [
+    ['Laborde S. et al. (2022). Effects of voluntary slow breathing on heart rate and heart rate variability: A systematic review and a meta-analysis. Neurosci Biobehav Rev 138:104711.', '10.1016/j.neubiorev.2022.104711'],
+    ['Laborde S. et al. (2022). Psychophysiological effects of slow-paced breathing at six cycles per minute with or without heart rate variability biofeedback. Psychophysiology 59:e13952.', '10.1111/psyp.13952'],
+    ['Lehrer P. et al. (2020). Heart Rate Variability Biofeedback Improves Emotional and Physical Health and Performance: A Systematic Review and Meta Analysis. Appl Psychophysiol Biofeedback 45(3):109–129.', '10.1007/s10484-020-09466-z'],
+    ['Goessl V.C., Curtiss J.E., Hofmann S.G. (2017). The effect of heart rate variability biofeedback training on stress and anxiety: a meta-analysis. Psychol Med 47(15):2578–2586.', '10.1017/S0033291717001003'],
+    ['Shaffer F., Meehan Z.M. (2020). A Practical Guide to Resonance Frequency Assessment for Heart Rate Variability Biofeedback. Front Neurosci 14:570400.', '10.3389/fnins.2020.570400'],
+    ['Balban M.Y. et al. (2023). Brief structured respiration practices enhance mood and reduce physiological arousal. Cell Rep Med 4(1):100895.', '10.1016/j.xcrm.2022.100895'],
+    ['Lally P. et al. (2010). How are habits formed: Modelling habit formation in the real world. Eur J Soc Psychol 40(6):998–1009.', '10.1002/ejsp.674'],
+    ['Edwards E.A. et al. (2016). Gamification for health promotion: systematic review of behaviour change techniques in smartphone apps. BMJ Open 6:e012447.', '10.1136/bmjopen-2016-012447'],
+    ['Gollwitzer P.M., Sheeran P. (2006). Implementation intentions and goal achievement: A meta-analysis. Adv Exp Soc Psychol 38:69–119.', '10.1016/S0065-2601(06)38002-1']
+  ];
+
+  function renderKnowledgeView(root){
+    root.innerHTML =
+      KNOWLEDGE.map(item => '<div class="atem-card"><h3 class="atem-card-title atem-knowledge-title">' + RT.escapeHtml(item[0]) + '</h3><p class="atem-text">' + RT.escapeHtml(item[1]) + '</p></div>').join('') +
+      '<div class="atem-card"><h3 class="atem-card-title">Quellen</h3><ul class="atem-sources" id="atemSources">' +
+        SOURCES.map(source => '<li>' + RT.escapeHtml(source[0]) + ' <a href="https://doi.org/' + source[1] + '" target="_blank" rel="noopener noreferrer">doi:' + source[1] + '</a></li>').join('') +
+      '</ul></div>';
+  }
+
+  /* ---------- Startseite: heutige Einheit und Morgen-HRV-Hinweis ---------- */
+  async function renderHome(){
+    const todayEl = document.getElementById('atemToday');
+    const hintEl = document.getElementById('atemHrvHint');
+    if(!todayEl || !hintEl) return;
+    try{
+      const [active, plans, records, latest, morning] = await Promise.all([
+        loadActivePlan(),
+        RT.store.get(PLANS_KEY).then(stored => stored ? JSON.parse(stored.value) : []),
+        loadPlanRecords(),
+        latestRealRf(),
+        loadMorning()
+      ]);
+      const today = todayIso();
+      const plan = active ? plans.find(p => p.id === active.planId) : null;
+      const open = plan ? Core.unitsForDay(plan, active.startDate, today, records).filter(item => !item.done) : [];
+      const rfBpm = latest ? latest.recommendedBpm : null;
+      if(open.length){
+        todayEl.innerHTML = '<div class="atem-home"><div class="atem-home-title">Heute offen · ' + RT.escapeHtml(plan.name) + '</div>' +
+          (active.trigger ? '<div class="atem-muted" id="atemHomeTrigger">' + RT.escapeHtml(triggerSentence(active.trigger)) + '</div>' : '') +
+          open.map(item => '<div class="atem-home-unit"><span>' + RT.escapeHtml(unitLabel(item.unit, rfBpm)) + '</span>' +
+            '<button class="atem-btn primary" data-home-unit="' + item.unit.id + '">Start</button></div>').join('') +
+          '</div>';
+        todayEl.querySelectorAll('[data-home-unit]').forEach(button => {
+          button.addEventListener('click', () => launchPlanUnit(plan, active.startDate, button.dataset.homeUnit, rfBpm));
+        });
+      } else {
+        todayEl.innerHTML = '';
+      }
+      const below = Core.morningBelowBand(Core.morningSeries(morning), today);
+      hintEl.innerHTML = below
+        ? '<div class="atem-home atem-home-hint" role="status">Dein 7-Tage-Mittel der Morgen-HRV liegt unter deinem Normalband. Das ist nur ein Hinweis, dein Plan ändert sich dadurch nicht.</div>'
+        : '';
+    }catch(e){
+      console.error('Atmung: Startseite nicht aktualisiert', e);
+    }
+  }
+
+  /* ---------- Unterseiten ---------- */
   const VIEWS = {
     session: {title:'Session starten', render:renderSessionView},
     rf: {title:'Resonanzfrequenz-Test', render:renderRfView},
     plaene: {title:'Trainingspläne', render:renderPlansView},
-    morgen: {title:'Morgen-HRV', render:renderPlannedView('Folgt in Phase 4.')},
-    verlauf: {title:'Verlauf', render:renderPlannedView('Folgt in Phase 4.')},
-    wissen: {title:'Wissen', render:renderPlannedView('Folgt in Phase 4.')},
+    morgen: {title:'Morgen-HRV', render:renderMorningView},
+    verlauf: {title:'Verlauf', render:renderHistoryView},
+    wissen: {title:'Wissen', render:renderKnowledgeView},
     signal: {title:'Gurt & Signal', render:renderSignalView}
   };
   const HASH_PREFIX = '#atem/';
@@ -1667,7 +2133,10 @@
     }
     viewEl.hidden = !name;
     document.body.classList.toggle('atem-open', !!name);
-    if(!name) return;
+    if(!name){
+      renderHome();
+      return;
+    }
     document.getElementById('atemViewTitle').textContent = VIEWS[name].title;
     const body = document.getElementById('atemViewBody');
     const preset = pendingPreset;
@@ -1727,5 +2196,6 @@
     });
     renderMenuStatus();
     syncViewWithHash();
+    renderHome();
   })();
 })();
