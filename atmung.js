@@ -527,12 +527,13 @@
       if(settings.vibrate && navigator.vibrate) navigator.vibrate(pattern);
     },
     phase(kind){
-      if(kind === 'in'){ this.tone(440, 0.35, 0.05); this.vibrate(60); }
-      else { this.tone(330, 0.35, 0.05); this.vibrate([40, 80, 40]); }
+      // Handylautsprecher geben tiefe Töne schlecht wieder; kurze Vibration ist kaum spürbar.
+      if(kind === 'in'){ this.tone(660, 0.4, 0.18); this.vibrate(150); }
+      else { this.tone(495, 0.4, 0.18); this.vibrate([100, 100, 100]); }
     },
     step(){
-      this.tone(523, 0.6, 0.06);
-      this.vibrate(250);
+      this.tone(784, 0.7, 0.2);
+      this.vibrate(400);
     }
   };
 
@@ -650,13 +651,14 @@
           '</div>' +
           '<p class="atem-hint" id="atemPatternHint"></p>' +
         '</div>' +
-        foldableCard('Anzeige und Hinweise', true,
+        foldableCard('Anzeige und Hinweise <span class="atem-fold-note" id="atemCueNote"></span>', true,
           '<div class="atem-checks">' +
             checkHtml('atemTone', 'Leiser Ton am Phasenwechsel', settings.tone) +
-            checkHtml('atemVibrate', 'Vibration am Phasenwechsel', settings.vibrate) +
+            checkHtml('atemVibrate', navigator.vibrate ? 'Vibration am Phasenwechsel' : 'Vibration (auf diesem Gerät nicht verfügbar)', settings.vibrate && !!navigator.vibrate) +
             checkHtml('atemFeedback', 'Live-Feedback anzeigen', settings.showFeedback) +
             checkHtml('atemKeepRr', 'RR-Rohdaten speichern (rund 8 KB je 20 min)', settings.keepRr) +
           '</div>' +
+          '<p class="atem-hint">Beim Einschalten kommt sofort ein Probehinweis. Der Ton folgt der Medienlautstärke des Handys.</p>' +
           '<label class="atem-field atem-field-wide"><span>Abendmodus</span><select class="atem-select" id="atemEvening">' +
             optionsHtml([{value:'auto', label:'Automatisch ab 19 Uhr'}, {value:'an', label:'An'}, {value:'aus', label:'Aus'}], settings.eveningMode) +
           '</select></label>') +
@@ -682,8 +684,21 @@
       byId('atemBpm').addEventListener('change', e => { saveSetting('bpm', Number(e.target.value)); updatePatternHint(); });
       byId('atemIe').addEventListener('change', e => { saveSetting('ie', e.target.value); updatePatternHint(); });
       byId('atemDuration').addEventListener('change', e => saveSetting('durationMin', Number(e.target.value)));
-      byId('atemTone').addEventListener('change', e => { saveSetting('tone', e.target.checked); if(e.target.checked) cues.phase('in'); });
-      byId('atemVibrate').addEventListener('change', e => { saveSetting('vibrate', e.target.checked); if(e.target.checked) cues.phase('in'); });
+      function updateCueNote(){
+        byId('atemCueNote').textContent = '· Ton ' + (settings.tone ? 'an' : 'aus') + ', Vibration ' + (settings.vibrate ? 'an' : 'aus');
+      }
+      byId('atemVibrate').disabled = !navigator.vibrate;
+      byId('atemTone').addEventListener('change', e => {
+        saveSetting('tone', e.target.checked);
+        updateCueNote();
+        if(e.target.checked) cues.tone(660, 0.4, 0.18);
+      });
+      byId('atemVibrate').addEventListener('change', e => {
+        saveSetting('vibrate', e.target.checked);
+        updateCueNote();
+        if(e.target.checked) cues.vibrate(150);
+      });
+      updateCueNote();
       byId('atemFeedback').addEventListener('change', e => saveSetting('showFeedback', e.target.checked));
       byId('atemKeepRr').addEventListener('change', e => saveSetting('keepRr', e.target.checked));
       byId('atemEvening').addEventListener('change', e => { saveSetting('eveningMode', e.target.value); applyEvening(); });

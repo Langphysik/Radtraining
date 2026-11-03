@@ -128,3 +128,4 @@ body.atem-open{overflow:hidden;}
 .atem-fold[open] > summary{margin-bottom:10px;}
 .atem-fold-caret{font-size:10px;transition:transform .15s;}
 .atem-fold[open] .atem-fold-caret{transform:rotate(90deg);}
+.atem-fold-note{font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--ink-soft);}
