@@ -16,7 +16,7 @@ einen leeren Stand; es gibt keine automatische Synchronisierung zwischen Geräte
 2. **Dateien hochladen**
    Im neuen Repo: **Add file** → **Upload files** → alle Dateien aus diesem Paket
    hineinziehen (`index.html`, `manifest.json`, `icon-192.png`, `icon-512.png`,
-   `icon-180.png`) → **Commit changes**.
+   `icon-180.png`, `atmung.js`, `atmung-core.js`, `atmung.css`) → **Commit changes**.
    Alle Dateien müssen im Root-Verzeichnis liegen (keine Unterordner).
 
 3. **GitHub Pages aktivieren**

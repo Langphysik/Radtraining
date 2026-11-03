@@ -1,0 +1,71 @@
+/* Atmung & HRV. Farben und Formen kommen aus den CSS-Variablen in index.html. */
+
+/* ---------- Menü ---------- */
+#atemNav > summary.section-title{
+  display:flex;align-items:center;gap:10px;
+  font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.09em;color:var(--ink-soft);
+}
+#atemNav > summary.section-title::after{content:"";flex:1;height:1px;background:var(--line-soft);}
+.atem-menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;}
+.atem-menu-item{
+  font-family:'Inter',system-ui,sans-serif;font-size:13.5px;font-weight:500;text-align:left;
+  background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+  padding:12px 14px;border-radius:10px;cursor:pointer;min-height:44px;
+}
+.atem-menu-item:hover{border-color:var(--ink-dim);}
+.atem-menu-item.secondary{color:var(--ink-soft);background:transparent;}
+.atem-nav-status{
+  display:flex;align-items:center;gap:8px;margin-top:12px;
+  font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);
+}
+.atem-nav-status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--atem-status,var(--ink-dim));}
+
+/* ---------- Vollbild-Unterseite ---------- */
+body.atem-open{overflow:hidden;}
+.atem-view{position:fixed;inset:0;z-index:50;overflow-y:auto;background:var(--bg);}
+.atem-view[hidden]{display:none;}
+.atem-view-inner{
+  max-width:720px;margin:0 auto;
+  padding:max(16px,env(safe-area-inset-top)) 16px max(32px,env(safe-area-inset-bottom));
+}
+.atem-view-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.atem-view-title{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;margin:0;color:var(--ink);}
+
+/* ---------- Bausteine ---------- */
+.atem-card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;margin-bottom:12px;
+}
+.atem-card-title{
+  font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--ink-dim);margin:0 0 10px;
+}
+.atem-status-line{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:15px;}
+.atem-dot{width:10px;height:10px;border-radius:50%;background:var(--ink-dim);}
+.atem-muted{color:var(--ink-soft);font-size:12.5px;}
+.atem-hint{font-size:12.5px;color:var(--ink-soft);margin:10px 0;overflow-wrap:anywhere;}
+.atem-error{font-size:12.5px;color:var(--crimson);margin:8px 0 0;}
+.atem-error:empty{display:none;}
+.atem-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.atem-btn{
+  font-family:'IBM Plex Mono',monospace;font-size:12.5px;min-height:40px;padding:8px 14px;
+  background:var(--panel-2);border:1px solid var(--line);color:var(--ink-soft);
+  border-radius:20px;cursor:pointer;
+}
+.atem-btn:hover{border-color:var(--ink-dim);}
+.atem-btn.primary{background:var(--gold);border-color:var(--gold);color:#1B1305;font-weight:600;}
+.atem-btn:disabled{opacity:.45;cursor:not-allowed;}
+.atem-btn[hidden]{display:none;}
+.atem-select{
+  font-family:'IBM Plex Mono',monospace;font-size:12px;min-height:40px;max-width:100%;
+  background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+  padding:7px 10px;border-radius:10px;
+}
+.atem-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+@media(max-width:480px){.atem-stats{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.atem-stat-value{font-size:17px;overflow-wrap:anywhere;}
+.atem-curve{display:block;width:100%;height:170px;}
+.atem-beats{margin-top:10px;max-height:320px;overflow-y:auto;}
+.atem-beats .history-table{min-width:0;}
+.atem-artefact td{color:var(--crimson);}

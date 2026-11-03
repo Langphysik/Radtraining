@@ -255,6 +255,7 @@
 
   footer{margin-top:44px;font-size:11px;color:var(--ink-dim);text-align:center;}
 </style>
+<link rel="stylesheet" href="atmung.css">
 </head>
 <body>
 <div class="app" id="app">
@@ -265,6 +266,24 @@
     </div>
     <div class="phase-chip" id="phaseChip"></div>
   </header>
+
+  <section>
+    <details class="collapsible" id="atemNav">
+      <summary class="section-title"><span class="caret">▸</span>Atmung &amp; HRV</summary>
+      <div class="collapsible-body block-manager">
+        <nav class="atem-menu" aria-label="Atmung und HRV">
+          <button class="atem-menu-item" data-atem-view="session">Session starten</button>
+          <button class="atem-menu-item" data-atem-view="rf">Resonanzfrequenz-Test</button>
+          <button class="atem-menu-item" data-atem-view="plaene">Trainingspläne</button>
+          <button class="atem-menu-item" data-atem-view="morgen">Morgen-HRV</button>
+          <button class="atem-menu-item" data-atem-view="verlauf">Verlauf</button>
+          <button class="atem-menu-item" data-atem-view="wissen">Wissen</button>
+          <button class="atem-menu-item secondary" data-atem-view="signal">Gurt &amp; Signal</button>
+        </nav>
+        <div class="atem-nav-status" id="atemNavStatus" role="status"></div>
+      </div>
+    </details>
+  </section>
 
   <section>
     <details class="collapsible">
@@ -1474,8 +1493,12 @@
     attachStaticListeners();
     renderAll();
   }
+  // Schnittstelle für das Atmung-Modul (atmung.js)
+  window.RT = {store, downloadJSON, escapeHtml, uid, toISODate};
   initApp();
 })();
 </script>
+<script src="atmung-core.js"></script>
+<script src="atmung.js"></script>
 </body>
 </html>

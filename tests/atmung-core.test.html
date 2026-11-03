@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Tests Atmung-Kern</title>
+<style>body{font:14px monospace;padding:16px;white-space:pre-wrap;}</style>
+</head>
+<body>
+<div id="out"></div>
+<script src="../atmung-core.js"></script>
+<script>
+(function(){
+  const C = window.AtemCore;
+  const lines = [];
+  let failed = 0, passed = 0;
+  function test(name, fn){
+    try{ fn(); passed++; lines.push('ok    ' + name); }
+    catch(e){ failed++; lines.push('FAIL  ' + name + ': ' + e.message); }
+  }
+  function eq(actual, expected, label){
+    if(actual !== expected) throw new Error((label || '') + ' erwartet ' + expected + ', erhalten ' + actual);
+  }
+  function near(actual, expected, tolerance, label){
+    if(Math.abs(actual - expected) > tolerance) throw new Error((label || '') + ' erwartet ' + expected + ' ± ' + tolerance + ', erhalten ' + actual);
+  }
+  function bytes(list){ return new DataView(new Uint8Array(list).buffer); }
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function feed(values, stepMs){
+    const p = new C.SignalPipeline();
+    let now = 100000;
+    values.forEach(rr => { now += stepMs || rr; p.ingest([rr], now); });
+    return p;
+  }
+
+  /* ---------- Parser ---------- */
+  test('Parser: uint8 ohne RR', () => {
+    const r = C.parseHeartRateMeasurement(bytes([0x00, 72]));
+    eq(r.hr, 72); eq(r.rrMs.length, 0);
+  });
+  test('Parser: uint16 Little Endian', () => {
+    eq(C.parseHeartRateMeasurement(bytes([0x01, 0x2C, 0x01])).hr, 300);
+  });
+  test('Parser: RR-Einheit 1/1024 s', () => {
+    const r = C.parseHeartRateMeasurement(bytes([0x10, 60, 0x00, 0x04]));
+    eq(r.rrMs.length, 1); near(r.rrMs[0], 1000, 1e-9);
+  });
+  test('Parser: mehrere RR-Werte', () => {
+    const r = C.parseHeartRateMeasurement(bytes([0x10, 60, 0x00, 0x04, 0x00, 0x02]));
+    eq(r.rrMs.length, 2); near(r.rrMs[1], 500, 1e-9);
+  });
+  test('Parser: Energy Expended wird übersprungen', () => {
+    const r = C.parseHeartRateMeasurement(bytes([0x18, 60, 0xFF, 0xFF, 0x00, 0x04]));
+    eq(r.rrMs.length, 1); near(r.rrMs[0], 1000, 1e-9);
+  });
+  test('Parser: uint16 mit Energy und RR', () => {
+    const r = C.parseHeartRateMeasurement(bytes([0x19, 60, 0x00, 0x01, 0x00, 0x00, 0x04]));
+    eq(r.hr, 60); eq(r.rrMs.length, 1); near(r.rrMs[0], 1000, 1e-9);
+  });
+  test('Parser: unvollständiges Byte am Ende wird ignoriert', () => {
+    eq(C.parseHeartRateMeasurement(bytes([0x10, 60, 0x00, 0x04, 0x01])).rrMs.length, 1);
+  });
+  test('Parser: zu kurzes Paket liefert null', () => {
+    eq(C.parseHeartRateMeasurement(bytes([0x00])), null);
+    eq(C.parseHeartRateMeasurement(bytes([0x01, 0x10])), null);
+  });
+  test('Encoder und Parser sind zueinander passend', () => {
+    const r = C.parseHeartRateMeasurement(C.encodeHeartRateMeasurement({hr:66, rrMs:[900, 950], energy:12}));
+    eq(r.hr, 66); near(r.rrMs[0], 900, 1); near(r.rrMs[1], 950, 1);
+  });
+
+  /* ---------- Artefakte ---------- */
+  test('Filter: Status bleibt offen bis 2 Folgeschläge da sind', () => {
+    const p = feed([900, 900, 900]);
+    eq(p.beats[0].status, 'ok'); eq(p.beats[1].status, 'pending'); eq(p.beats[2].status, 'pending');
+    p.finish();
+    eq(p.beats[2].status, 'ok');
+  });
+  test('Filter: RR außerhalb 300–2000 ms', () => {
+    const p = feed([900, 299, 900, 2001, 900, 900, 900], 900);
+    p.finish();
+    eq(p.beats[1].status, 'range'); eq(p.beats[3].status, 'range'); eq(p.beats[2].status, 'ok');
+  });
+  test('Filter: Grenzwerte 300 und 2000 ms sind kein Bereichsartefakt', () => {
+    const p = feed([300, 2000], 900);
+    eq(p.beats[0].status === 'range', false); eq(p.beats[1].status === 'range', false);
+  });
+  test('Filter: Extraschlag und Kompensation werden beide erkannt', () => {
+    const p = feed([900, 900, 900, 540, 1260, 900, 900, 900]);
+    p.finish();
+    eq(p.beats[3].status, 'median'); eq(p.beats[4].status, 'median'); eq(p.beats[2].status, 'ok'); eq(p.beats[5].status, 'ok');
+  });
+  test('Filter: verpasster Schlag', () => {
+    const p = feed([900, 900, 900, 1800, 900, 900, 900]);
+    p.finish();
+    eq(p.beats[3].status, 'median'); eq(Core_ok(p), 6);
+  });
+  function Core_ok(p){ return p.beats.filter(b => b.status === 'ok').length; }
+
+  /* Vergleich: nachlaufender Median der letzten 5 (Auftrag) gegen zentrierten Median */
+  function trailingFlags(values){
+    const valid = [];
+    return values.map(rr => {
+      if(rr < 300 || rr > 2000) return true;
+      let flagged = false;
+      if(valid.length >= 5){
+        const m = C.median(valid.slice(-5));
+        flagged = Math.abs(rr - m) / m > 0.2;
+      }
+      if(!flagged) valid.push(rr);
+      return flagged;
+    });
+  }
+  function simulate(profile, count, seed, artefactProb){
+    const gen = C.createRrSimulator(Object.assign({rng:mulberry32(seed), artefactProb}, profile));
+    const list = [];
+    for(let i = 0; i < count; i++) list.push(gen.next());
+    return list;
+  }
+  function falseRate(flags, truth){
+    let clean = 0, wrong = 0;
+    truth.forEach((beat, i) => { if(!beat.injected){ clean++; if(flags[i]) wrong++; } });
+    return wrong / clean;
+  }
+  function pipelineFlags(truth){
+    const p = feed(truth.map(b => b.rr));
+    p.finish();
+    return p.beats.map(b => b.status !== 'ok');
+  }
+  const STRONG = {meanRr:1030, amplitude:170};
+  const VERY_STRONG = {meanRr:1100, amplitude:260};
+  test('Filter: starke RSA wird nicht als Artefakt verworfen (zentriert < 1 %)', () => {
+    const truth = simulate(STRONG, 6000, 1, 0);
+    const centred = falseRate(pipelineFlags(truth), truth);
+    const trailing = falseRate(trailingFlags(truth.map(b => b.rr)), truth);
+    lines.push('      Fehlalarme bei 1030 ± 170 ms: zentriert ' + (centred * 100).toFixed(2) + ' %, nachlaufend ' + (trailing * 100).toFixed(2) + ' %');
+    if(centred >= 0.01) throw new Error('zu viele Fehlalarme: ' + centred);
+  });
+  test('Filter: Messung bei sehr starker RSA', () => {
+    const truth = simulate(VERY_STRONG, 6000, 2, 0);
+    lines.push('      Fehlalarme bei 1100 ± 260 ms: zentriert ' + (falseRate(pipelineFlags(truth), truth) * 100).toFixed(2) +
+      ' %, nachlaufend ' + (falseRate(trailingFlags(truth.map(b => b.rr)), truth) * 100).toFixed(2) + ' %');
+  });
+  test('Filter: erkennt mindestens 90 % eingestreuter Artefakte', () => {
+    const truth = simulate({meanRr:900, amplitude:60}, 20000, 3, 0.01);
+    const flags = pipelineFlags(truth);
+    let injected = 0, found = 0;
+    truth.forEach((beat, i) => { if(beat.injected){ injected++; if(flags[i]) found++; } });
+    lines.push('      Erkannt: ' + found + ' von ' + injected);
+    if(found / injected < 0.9) throw new Error('nur ' + found + ' von ' + injected);
+  });
+
+  /* ---------- Kennwerte ---------- */
+  test('RMSSD: bekannter Wert', () => {
+    const p = feed([800, 810, 790, 800]);
+    p.finish();
+    near(C.rmssd(p.beats), Math.sqrt(200), 1e-9);
+    near(C.lnRmssd(p.beats), Math.log(Math.sqrt(200)), 1e-9);
+  });
+  test('RMSSD: kein Paar über ein Artefakt hinweg', () => {
+    const p = feed([900, 910, 900, 1800, 920, 930, 920, 930]);
+    p.finish();
+    eq(p.beats[3].status, 'median');
+    // Paare: 900-910, 910-900, 920-930, 930-920, 920-930; alle |d| = 10
+    near(C.rmssd(p.beats), 10, 1e-9);
+  });
+  test('RMSSD: kein Paar über einen Signalabriss hinweg', () => {
+    const p = new C.SignalPipeline();
+    let now = 0;
+    [900, 910, 900].forEach(rr => { now += rr; p.ingest([rr], now); });
+    now += 30000;
+    [500, 510, 500].forEach((rr, i) => { if(i) now += rr; p.ingest([rr], now); });
+    p.finish();
+    eq(p.gaps, 1);
+    near(C.rmssd(p.beats), 10, 1e-9);
+  });
+  test('RMSSD: ohne Paar null', () => {
+    eq(C.rmssd([]), null); eq(C.lnRmssd([]), null);
+  });
+  test('Signalqualität: Grenzen', () => {
+    eq(C.signalQuality(null), null);
+    eq(C.signalQuality(0.0199), 'gut');
+    eq(C.signalQuality(0.02), 'mäßig');
+    eq(C.signalQuality(0.05), 'mäßig');
+    eq(C.signalQuality(0.0501), 'schlecht');
+  });
+  test('Artefaktquote zählt offene Schläge nicht mit', () => {
+    const stats = C.artefactStats([{status:'ok'}, {status:'median'}, {status:'range'}, {status:'ok'}, {status:'pending'}]);
+    eq(stats.total, 4); eq(stats.artefacts, 2); eq(stats.rate, 0.5); eq(stats.quality, 'schlecht');
+  });
+  test('RSA: HFmax − HFmin im Zyklus', () => {
+    const beats = [{t:1, rr:1000, status:'ok'}, {t:2, rr:750, status:'ok'}, {t:3, rr:600, status:'ok'}, {t:4, rr:400, status:'median'}, {t:20, rr:300, status:'ok'}];
+    near(C.rsaAmplitude(beats, 0, 10), 40, 1e-9);
+  });
+  test('RSA: zu wenige Schläge ergeben null und zählen nicht im Mittel', () => {
+    const beats = [{t:1, rr:1000, status:'ok'}, {t:2, rr:750, status:'ok'}, {t:3, rr:600, status:'ok'}, {t:11, rr:900, status:'ok'}];
+    const s = C.rsaSummary(beats, [{start:0, end:10}, {start:10, end:20}]);
+    eq(s.perCycle[1], null); near(s.mean, 40, 1e-9); near(s.last, 40, 1e-9);
+  });
+  test('RSA: Simulator-Amplitude wird im 10-s-Zyklus getroffen', () => {
+    const gen = C.createRrSimulator({meanRr:900, amplitude:60, noiseSd:0, artefactProb:0});
+    const p = new C.SignalPipeline();
+    let now = 0;
+    for(let i = 0; i < 200; i++){ const {rr} = gen.next(); now += rr; p.ingest([rr], now); }
+    p.finish();
+    const cycles = [];
+    for(let start = p.beats[0].t; start + 10000 <= p.beats[p.beats.length - 1].t; start += 10000) cycles.push({start, end:start + 10000});
+    // 900 ± 60 ms entspricht rund 62,5 bis 71,4 bpm
+    near(C.rsaSummary(p.beats, cycles).mean, 8.9, 1.2);
+  });
+
+  /* ---------- Zeitachse ---------- */
+  test('Zeitachse: mehrere RR im Paket enden bei der Ankunftszeit', () => {
+    const p = new C.SignalPipeline();
+    p.ingest([800, 900], 10000);
+    near(p.beats[0].t, 9100, 1e-9); near(p.beats[1].t, 10000, 1e-9);
+  });
+  test('Zeitachse: Latenz-Schwankung erzeugt keinen Abriss und läuft monoton', () => {
+    const rng = mulberry32(7);
+    const p = new C.SignalPipeline();
+    let truth = 0;
+    for(let i = 0; i < 300; i++){ truth += 900; p.ingest([900], truth + rng() * 300); }
+    eq(p.gaps, 0);
+    for(let i = 1; i < p.beats.length; i++){ if(p.beats[i].t <= p.beats[i - 1].t) throw new Error('nicht monoton bei ' + i); }
+    near(p.beats[p.beats.length - 1].t, truth, 400);
+  });
+  test('Zeitachse: Paket ohne RR zählt, erzeugt aber keinen Schlag', () => {
+    const p = new C.SignalPipeline();
+    p.ingest([], 1000);
+    eq(p.packets, 1); eq(p.packetsWithoutRr, 1); eq(p.beats.length, 0);
+  });
+
+  lines.push('', passed + ' bestanden, ' + failed + ' fehlgeschlagen');
+  document.getElementById('out').textContent = lines.join('\n');
+  document.title = failed ? 'FEHLER' : 'OK';
+})();
+</script>
+</body>
+</html>
