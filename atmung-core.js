@@ -233,20 +233,111 @@
     return {perCycle, mean, last: valid.length ? valid[valid.length - 1] : null};
   }
 
+  /* ---------- Atemmuster ---------- */
+  const BPM_OPTIONS = [4.5, 5, 5.5, 6, 6.5, 7];
+  const IE_OPTIONS = {'1:1': 0.5, '4:6': 0.4};
+
+  /* Phasen sind eine frei definierbare Liste, damit auch mehrteilige Muster passen.
+     from/to: Füllstand des Pacers von 0 (leer) bis 1 (voll). */
+  function buildBreathPattern(bpm, ie){
+    const cycleMs = 60000 / bpm;
+    const inhaleShare = IE_OPTIONS[ie] || IE_OPTIONS['1:1'];
+    return {
+      bpm, ie, cycleMs,
+      phases: [
+        {kind:'in', label:'Einatmen', ms:cycleMs * inhaleShare, from:0, to:1},
+        {kind:'out', label:'Ausatmen', ms:cycleMs * (1 - inhaleShare), from:1, to:0}
+      ]
+    };
+  }
+
+  function pacerState(pattern, elapsedMs){
+    const elapsed = Math.max(0, elapsedMs);
+    const cycleIndex = Math.floor(elapsed / pattern.cycleMs);
+    let position = elapsed - cycleIndex * pattern.cycleMs;
+    let phaseIndex = 0;
+    while(phaseIndex < pattern.phases.length - 1 && position >= pattern.phases[phaseIndex].ms){
+      position -= pattern.phases[phaseIndex].ms;
+      phaseIndex++;
+    }
+    const phase = pattern.phases[phaseIndex];
+    const progress = Math.min(1, position / phase.ms);
+    const eased = (1 - Math.cos(Math.PI * progress)) / 2;
+    return {
+      cycleIndex, phaseIndex, progress,
+      kind: phase.kind,
+      label: phase.label,
+      level: phase.from + (phase.to - phase.from) * eased
+    };
+  }
+
+  /* Abgeschlossene Zyklen im Bereich, für die RSA-Zuordnung. */
+  function pacerCycles(pattern, startMs, endMs){
+    const cycles = [];
+    for(let start = startMs; start + pattern.cycleMs <= endMs; start += pattern.cycleMs){
+      cycles.push({start, end: start + pattern.cycleMs});
+    }
+    return cycles;
+  }
+
+  /* Phasenbänder ab Pacer-Start, überlappend mit [fromMs, toMs). */
+  function pacerBands(pattern, startMs, fromMs, toMs){
+    const bands = [];
+    const firstCycle = Math.max(0, Math.floor((fromMs - startMs) / pattern.cycleMs));
+    let t = startMs + firstCycle * pattern.cycleMs;
+    while(t < toMs){
+      for(const phase of pattern.phases){
+        const end = t + phase.ms;
+        if(end > fromMs && t < toMs) bands.push({start:Math.max(t, fromMs), end:Math.min(end, toMs), kind:phase.kind});
+        t = end;
+      }
+    }
+    return bands;
+  }
+
+  /* ---------- Session-Auswertung ---------- */
+  function segmentStats(beats, range){
+    if(!range) return null;
+    const segment = beatsBetween(beats, range.start, range.end);
+    const clean = segment.filter(b => b.status === 'ok');
+    if(!clean.length) return null;
+    const meanRr = clean.reduce((sum, b) => sum + b.rr, 0) / clean.length;
+    return {rmssd: rmssd(segment), lnRmssd: lnRmssd(segment), hr: 60000 / meanRr, beats: clean.length};
+  }
+
+  function summarizeSession({beats, pattern, baseline, pacer, post}){
+    const cycles = pacer ? pacerCycles(pattern, pacer.start, pacer.end) : [];
+    const rsa = rsaSummary(beats, cycles);
+    const stats = artefactStats(beats);
+    return {
+      baseline: segmentStats(beats, baseline),
+      post: segmentStats(beats, post),
+      pacerRmssd: pacer ? rmssd(beatsBetween(beats, pacer.start, pacer.end)) : null,
+      rsaMean: rsa.mean,
+      cycleCount: rsa.perCycle.filter(v => v !== null).length,
+      artefactRate: stats.rate,
+      artefactCount: stats.artefacts,
+      beatCount: stats.total,
+      quality: stats.quality
+    };
+  }
+
   /* ---------- Simulator ---------- */
   function createRrSimulator(options = {}){
     const {meanRr = 900, amplitude = 60, breathHz = 0.1, noiseSd = 8, artefactProb = 0.01, rng = Math.random} = options;
-    let elapsedS = 0;
+    let breathPhase = 0;
+    let currentHz = breathHz;
     const queued = [];
     function gaussian(){
       return Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * rng());
     }
     return {
+      setBreathHz(hz){ currentHz = hz; },
       /* injected = absichtlich erzeugtes Artefakt, zur Prüfung des Filters */
       next(){
         let beat = queued.shift();
         if(!beat){
-          const clean = meanRr + amplitude * Math.sin(2 * Math.PI * breathHz * elapsedS) + noiseSd * gaussian();
+          const clean = meanRr + amplitude * Math.sin(breathPhase) + noiseSd * gaussian();
           if(rng() < artefactProb){
             const kind = rng();
             if(kind < 0.5){            // Extraschlag: kurz, danach kompensatorisch lang
@@ -261,7 +352,7 @@
             beat = {rr: clean, injected: false};
           }
         }
-        elapsedS += beat.rr / 1000;
+        breathPhase += 2 * Math.PI * currentHz * beat.rr / 1000;
         return beat;
       }
     };
@@ -272,6 +363,7 @@
     parseHeartRateMeasurement, encodeHeartRateMeasurement,
     SignalPipeline, median,
     beatsBetween, rmssd, lnRmssd, artefactStats, signalQuality, rsaAmplitude, rsaSummary,
+    BPM_OPTIONS, IE_OPTIONS, buildBreathPattern, pacerState, pacerCycles, pacerBands, summarizeSession,
     createRrSimulator
   };
 })(window);

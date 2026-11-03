@@ -69,3 +69,62 @@ body.atem-open{overflow:hidden;}
 .atem-beats{margin-top:10px;max-height:320px;overflow-y:auto;}
 .atem-beats .history-table{min-width:0;}
 .atem-artefact td{color:var(--crimson);}
+
+/* ---------- Formularelemente ---------- */
+.atem-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.atem-field{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--ink-dim);min-width:0;}
+.atem-field .atem-select{width:100%;}
+.atem-field-wide{margin-top:12px;}
+.atem-checks{display:flex;flex-direction:column;gap:2px;}
+.atem-check{display:flex;align-items:center;gap:10px;min-height:40px;font-size:13.5px;color:var(--ink-soft);cursor:pointer;}
+.atem-check input{width:18px;height:18px;accent-color:var(--gold);flex-shrink:0;}
+.atem-scale{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;}
+.atem-chip{
+  font-family:'IBM Plex Mono',monospace;font-size:14px;min-height:42px;
+  background:var(--panel-2);border:1px solid var(--line);color:var(--ink-soft);
+  border-radius:10px;cursor:pointer;
+}
+.atem-chip[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:#1B1305;font-weight:600;}
+.atem-textarea{
+  width:100%;font-family:'Inter',system-ui,sans-serif;font-size:14px;
+  background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+  padding:8px 10px;border-radius:10px;resize:vertical;
+}
+.atem-start{width:100%;min-height:50px;font-size:15px;}
+
+/* ---------- Laufende Session ---------- */
+.atem-view.atem-running .atem-view-head{display:none;}
+.atem-run{display:flex;flex-direction:column;gap:12px;}
+.atem-run-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;color:var(--ink-soft);}
+.atem-run-head .mono{font-size:22px;color:var(--ink);}
+.atem-pacer{position:relative;display:flex;align-items:center;justify-content:center;height:min(62vw,300px);}
+.atem-pacer-circle{
+  width:min(62vw,300px);height:min(62vw,300px);border-radius:50%;
+  background:radial-gradient(circle at 50% 45%, var(--glacier), transparent 130%);
+  opacity:.72;transition:background-color .8s;will-change:transform;
+}
+.atem-pacer-circle[data-kind="out"]{background:radial-gradient(circle at 50% 45%, var(--gold), transparent 130%);opacity:.55;}
+.atem-pacer-circle[data-kind="rest"]{background:var(--panel-2);opacity:1;}
+.atem-pacer-label{position:absolute;font-family:'Space Grotesk',sans-serif;font-size:21px;font-weight:600;color:var(--ink);text-shadow:0 1px 8px rgba(0,0,0,.55);}
+.atem-curve-small{height:130px;}
+.atem-rsa-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;}
+.atem-rsa-value{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;color:var(--ink);}
+.atem-rsa-label{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-dim);}
+.atem-spark{display:block;flex:1;max-width:150px;height:38px;min-width:0;}
+.atem-run-actions{justify-content:space-between;}
+.atem-warning{border-color:var(--crimson);}
+.atem-card[hidden],.atem-hint[hidden]{display:none;}
+
+/* ---------- Abendmodus ---------- */
+.atem-view.atem-evening{
+  --bg:#060C0A;--panel:#0B1411;--panel-2:#0F1B17;--line:#1A2A24;--line-soft:#14211C;
+  --ink:#B9C4B5;--ink-soft:#7E8E83;--ink-dim:#5E6F65;
+  --gold:#A8843F;--glacier:#4E7F9C;--good:#478F6C;--crimson:#A3424F;
+}
+
+/* ---------- Einklappbare Karten ---------- */
+.atem-fold > summary{cursor:pointer;list-style:none;margin:0;display:flex;align-items:center;gap:8px;min-height:24px;}
+.atem-fold > summary::-webkit-details-marker{display:none;}
+.atem-fold[open] > summary{margin-bottom:10px;}
+.atem-fold-caret{font-size:10px;transition:transform .15s;}
+.atem-fold[open] .atem-fold-caret{transform:rotate(90deg);}

@@ -230,6 +230,94 @@
     near(C.rsaSummary(p.beats, cycles).mean, 8.9, 1.2);
   });
 
+  /* ---------- Atemmuster ---------- */
+  test('Muster: 6/min 1:1 ergibt 5 s ein, 5 s aus', () => {
+    const p = C.buildBreathPattern(6, '1:1');
+    eq(p.cycleMs, 10000); near(p.phases[0].ms, 5000, 1e-9); near(p.phases[1].ms, 5000, 1e-9);
+  });
+  test('Muster: 6/min 4:6 ergibt 4 s ein, 6 s aus', () => {
+    const p = C.buildBreathPattern(6, '4:6');
+    near(p.phases[0].ms, 4000, 1e-9); near(p.phases[1].ms, 6000, 1e-9);
+  });
+  test('Muster: 4,5/min dauert 13,33 s pro Zyklus', () => {
+    near(C.buildBreathPattern(4.5, '1:1').cycleMs, 13333.33, 0.01);
+  });
+  test('Pacer: Phasen und Füllstand im 1:1-Muster', () => {
+    const p = C.buildBreathPattern(6, '1:1');
+    let s = C.pacerState(p, 0);
+    eq(s.kind, 'in'); near(s.level, 0, 1e-9);
+    s = C.pacerState(p, 2500);
+    near(s.level, 0.5, 1e-9);
+    s = C.pacerState(p, 4999.999);
+    eq(s.kind, 'in'); near(s.level, 1, 1e-6);
+    s = C.pacerState(p, 5000);
+    eq(s.kind, 'out'); near(s.level, 1, 1e-9);
+    s = C.pacerState(p, 10000);
+    eq(s.kind, 'in'); eq(s.cycleIndex, 1); near(s.level, 0, 1e-9);
+  });
+  test('Pacer: Füllstand springt an keiner Stelle', () => {
+    [C.buildBreathPattern(6, '1:1'), C.buildBreathPattern(5.5, '4:6'), C.buildBreathPattern(4.5, '1:1')].forEach(p => {
+      let last = C.pacerState(p, 0).level;
+      for(let t = 16; t < 60000; t += 16){
+        const level = C.pacerState(p, t).level;
+        if(Math.abs(level - last) > 0.02) throw new Error('Sprung bei ' + t + ': ' + last + ' auf ' + level);
+        last = level;
+      }
+    });
+  });
+  test('Pacer: Zyklen sind nur abgeschlossene', () => {
+    const p = C.buildBreathPattern(6, '1:1');
+    eq(C.pacerCycles(p, 1000, 1000 + 29999).length, 2);
+    eq(C.pacerCycles(p, 1000, 1000 + 30000).length, 3);
+    eq(C.pacerCycles(p, 1000, 1000 + 30000)[1].start, 11000);
+  });
+  test('Pacer: Bänder decken den Bereich lückenlos ab', () => {
+    const bands = C.pacerBands(C.buildBreathPattern(6, '4:6'), 1000, 3000, 12000);
+    eq(bands[0].kind, 'in'); eq(bands[0].start, 3000); eq(bands[0].end, 5000);
+    eq(bands[1].kind, 'out'); eq(bands[1].end, 11000);
+    eq(bands[2].kind, 'in'); eq(bands[2].end, 12000);
+    eq(bands.length, 3);
+  });
+
+  /* ---------- Session-Auswertung ---------- */
+  function simulatedRun(){
+    const gen = C.createRrSimulator({meanRr:900, amplitude:60, breathHz:0.1, noiseSd:0, artefactProb:0});
+    const p = new C.SignalPipeline();
+    let now = 0;
+    while(now < 240000){ const {rr} = gen.next(); now += rr; p.ingest([rr], now); }
+    p.finish();
+    return p;
+  }
+  test('Auswertung: Abschnitte werden getrennt berechnet', () => {
+    const p = simulatedRun();
+    const s = C.summarizeSession({
+      beats: p.beats, pattern: C.buildBreathPattern(6, '1:1'),
+      baseline: {start:0, end:60000}, pacer: {start:60000, end:180000}, post: {start:180000, end:240000}
+    });
+    near(s.baseline.hr, 66.7, 1.5); near(s.post.hr, 66.7, 1.5);
+    if(!(s.baseline.rmssd > 0) || !(s.post.rmssd > 0)) throw new Error('RMSSD fehlt');
+    near(s.rsaMean, 8.9, 1.2);
+    eq(s.cycleCount, 12); eq(s.quality, 'gut'); eq(s.artefactCount, 0);
+  });
+  test('Auswertung: ohne Gurtdaten bleibt alles leer statt falsch', () => {
+    const s = C.summarizeSession({beats:[], pattern:C.buildBreathPattern(6, '1:1'), baseline:null, pacer:{start:0, end:600000}, post:null});
+    eq(s.baseline, null); eq(s.post, null); eq(s.rsaMean, null); eq(s.pacerRmssd, null); eq(s.artefactRate, null); eq(s.quality, null); eq(s.cycleCount, 0);
+  });
+  test('Auswertung: früh beendete Session zählt nur fertige Zyklen', () => {
+    const p = simulatedRun();
+    const s = C.summarizeSession({beats:p.beats, pattern:C.buildBreathPattern(6, '1:1'), baseline:null, pacer:{start:0, end:25000}, post:null});
+    eq(s.cycleCount, 2);
+  });
+  test('Simulator: Atemfrequenz lässt sich ohne Sprung umstellen', () => {
+    const gen = C.createRrSimulator({meanRr:900, amplitude:60, noiseSd:0, artefactProb:0});
+    let last = 0;
+    for(let i = 0; i < 200; i++) last = gen.next().rr;
+    gen.setBreathHz(0.25);
+    // Der erste Schritt nach dem Wechsel folgt noch der alten Phase: bei 0,1 Hz höchstens rund 33 ms
+    near(gen.next().rr, last, 35, 'Übergang');
+    for(let i = 0; i < 200; i++) near(gen.next().rr, 900, 60.001, 'Amplitude');
+  });
+
   /* ---------- Zeitachse ---------- */
   test('Zeitachse: mehrere RR im Paket enden bei der Ankunftszeit', () => {
     const p = new C.SignalPipeline();
