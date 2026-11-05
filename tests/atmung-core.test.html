@@ -611,6 +611,50 @@
     eq(p.packets, 1); eq(p.packetsWithoutRr, 1); eq(p.beats.length, 0);
   });
 
+  test('RMSSD-Differenz: Session mit beiden Messungen', () => {
+    const c = C.rmssdChange({baseline:{rmssd:30, artefactRate:0.01}, post:{rmssd:37.5, artefactRate:0.05}, artefactRate:0.2});
+    eq(c.pre, 30); eq(c.post, 37.5); eq(c.diff, 7.5);
+    eq(c.disturbed, false, 'genau 5 % und Quote je Messung vor Session-Quote');
+  });
+  test('RMSSD-Differenz: über 5 % in einer Messung gilt als gestört', () => {
+    eq(C.rmssdChange({baseline:{rmssd:30, artefactRate:0.051}, post:{rmssd:37, artefactRate:0}}).disturbed, true);
+    eq(C.rmssdChange({baseline:{rmssd:30, artefactRate:0}, post:{rmssd:37, artefactRate:0.051}}).disturbed, true);
+  });
+  test('RMSSD-Differenz: fehlende Werte und alte Datensätze', () => {
+    const old = C.rmssdChange({baseline:{rmssd:30}, post:null, artefactRate:0.01});
+    eq(old.pre, 30); eq(old.post, null); eq(old.diff, null); eq(old.disturbed, false);
+    eq(C.rmssdChange({baseline:{rmssd:30}, post:{rmssd:31}, artefactRate:0.08}).disturbed, true, 'Session-Quote als Ersatz');
+    eq(C.rmssdChange({baseline:{rmssd:30}, post:{rmssd:31}}).disturbed, false, 'ohne jede Quote');
+    eq(C.rmssdChange({baseline:{rmssd:null, artefactRate:0}, post:{rmssd:31, artefactRate:0}}).diff, null);
+    eq(C.rmssdChange({baseline:null, post:null}).diff, null);
+  });
+  test('RMSSD-Mittel: Zeitfenster und Ausschluss', () => {
+    const s = (date, pre, post, rate) => ({date, baseline:{rmssd:pre, artefactRate:0}, post:post === null ? null : {rmssd:post, artefactRate:rate || 0}});
+    const list = [
+      s('2026-10-06', 30, 90),         // 31 Tage her: außerhalb
+      s('2026-10-07', 30, 40),         // 29 Tage her: nur im 30-Tage-Fenster
+      s('2026-10-29', 30, 90),         // 7 Tage her: außerhalb von 7 Tagen
+      s('2026-10-30', 30, 32),         // 6 Tage her: innerhalb
+      s('2026-11-05', 30, 28),
+      s('2026-11-05', 30, 90, 0.2),    // gestört
+      s('2026-11-05', 30, null),       // ohne Nachher-Wert
+      s('2026-11-06', 30, 90)          // Zukunft
+    ];
+    const week = C.rmssdChangeMean(list, '2026-11-05', 7);
+    eq(week.mean, 0); eq(week.count, 2); eq(week.excluded, 1);
+    const month = C.rmssdChangeMean(list, '2026-11-05', 30);
+    near(month.mean, (10 + 60 + 2 - 2) / 4, 1e-9); eq(month.count, 4); eq(month.excluded, 1);
+    const none = C.rmssdChangeMean([], '2026-11-05', 7);
+    eq(none.mean, null); eq(none.count, 0); eq(none.excluded, 0);
+  });
+  test('segmentStats: Artefaktquote gilt nur für die Messung selbst', () => {
+    const beats = [];
+    for(let i = 0; i < 10; i++) beats.push({t:i * 1000, rr:1000, status:'ok', afterGap:false});
+    for(let i = 10; i < 20; i++) beats.push({t:i * 1000, rr:1000, status:i === 10 ? 'median' : 'ok', afterGap:false});
+    eq(C.segmentStats(beats, {start:0, end:10000}).artefactRate, 0);
+    near(C.segmentStats(beats, {start:10000, end:20000}).artefactRate, 0.1, 1e-9);
+  });
+
   lines.push('', passed + ' bestanden, ' + failed + ' fehlgeschlagen');
   document.getElementById('out').textContent = lines.join('\n');
   document.title = failed ? 'FEHLER' : 'OK';

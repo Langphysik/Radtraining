@@ -333,7 +333,7 @@
     const clean = segment.filter(b => b.status === 'ok');
     if(!clean.length) return null;
     const meanRr = clean.reduce((sum, b) => sum + b.rr, 0) / clean.length;
-    return {rmssd: rmssd(segment), lnRmssd: lnRmssd(segment), hr: 60000 / meanRr, beats: clean.length};
+    return {rmssd: rmssd(segment), lnRmssd: lnRmssd(segment), hr: 60000 / meanRr, beats: clean.length, artefactRate: artefactStats(segment).rate};
   }
 
   function summarizeSession({beats, pattern, baseline, pacer, post}){
@@ -350,6 +350,39 @@
       artefactCount: stats.artefacts,
       beatCount: stats.total,
       quality: stats.quality
+    };
+  }
+
+  /* ---------- RMSSD vor und nach der Session ---------- */
+  /* Ältere Datensätze kennen keine Quote je Messung: Dann gilt die Quote der ganzen Session. */
+  function rmssdChange(session){
+    const before = session.baseline, after = session.post;
+    const valueOf = segment => segment && typeof segment.rmssd === 'number' ? segment.rmssd : null;
+    const isDisturbed = segment => {
+      if(!segment) return false;
+      const rate = typeof segment.artefactRate === 'number' ? segment.artefactRate : session.artefactRate;
+      return typeof rate === 'number' && signalQuality(rate) === 'schlecht';
+    };
+    const pre = valueOf(before), post = valueOf(after);
+    return {
+      pre, post,
+      diff: pre !== null && post !== null ? post - pre : null,
+      disturbed: isDisturbed(before) || isDisturbed(after)
+    };
+  }
+
+  /* Mittlere Differenz der letzten days Tage einschließlich heute, ohne gestörte Sessions. */
+  function rmssdChangeMean(sessions, todayIso, days){
+    const today = isoToDayNumber(todayIso);
+    const changes = sessions
+      .filter(s => { const d = isoToDayNumber(s.date); return d <= today && d > today - days; })
+      .map(rmssdChange)
+      .filter(change => change.diff !== null);
+    const counted = changes.filter(change => !change.disturbed);
+    return {
+      mean: counted.length ? counted.reduce((sum, change) => sum + change.diff, 0) / counted.length : null,
+      count: counted.length,
+      excluded: changes.length - counted.length
     };
   }
 
@@ -703,7 +736,7 @@
     BPM_OPTIONS, IE_OPTIONS, DEFAULT_BPM, buildBreathPattern, buildSighPattern, pacerState, pacerCycles, pacerBands, summarizeSession,
     RF_STEPS, RF_STEP_MS, RF_PAUSE_MS, RF_MIN_CYCLES, rfStepStats, evaluateRfSteps,
     STANDARD_PLANS, validatePlan, normalizePlan, planWeekIndex, unitsForDay, weekProgress, resolveFrequency,
-    segmentStats, recordMinutes, weekActiveDays, practiceHeatmap, minutesPerWeek, weeklyComparison, sessionsToCsv,
+    segmentStats, rmssdChange, rmssdChangeMean, recordMinutes, weekActiveDays, practiceHeatmap, minutesPerWeek, weeklyComparison, sessionsToCsv,
     MORNING_SETTLE_MS, MORNING_MEASURE_MS, MORNING_MIN_BEATS, morningSeries, morningBelowBand,
     createRrSimulator
   };

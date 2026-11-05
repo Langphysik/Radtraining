@@ -177,8 +177,14 @@ body.atem-open{overflow:hidden;}
 .atem-heat-cell.future{background:transparent;border-style:dashed;}
 .atem-chart{position:relative;height:190px;}
 .atem-chart[hidden]{display:none;}
+.atem-chart-stats{margin-top:12px;}
 .atem-list{margin-top:4px;max-height:420px;overflow-y:auto;}
 .atem-list .history-table{min-width:0;}
+.atem-session-detail{margin-top:4px;font-size:12.5px;}
+.atem-session-detail > summary{cursor:pointer;min-height:24px;color:var(--ink-soft);}
+.atem-session-detail dl{margin:4px 0;}
+.atem-session-detail dt{color:var(--ink-dim);font-size:11.5px;margin-top:4px;}
+.atem-session-detail dd{margin:0;color:var(--ink);overflow-wrap:anywhere;}
 .atem-export{margin-top:12px;}
 .atem-trigger{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line-soft);display:flex;flex-direction:column;gap:6px;}
 .atem-trigger .atem-hint{margin:0;}

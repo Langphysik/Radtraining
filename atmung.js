@@ -30,10 +30,17 @@
   const RSA_TREND_CYCLES = 12;
   const RSA_EVALUATION_DELAY_MS = 2500;  // der Artefaktfilter bewertet Schläge erst nach 2 Folgeschlägen
   const BAND_COLORS = {in:'rgba(111,180,219,.14)', out:'rgba(231,178,79,.09)'};
+  const RMSSD_DISTURBED_TEXT = 'Artefaktquote über 5 % in einer Ruhemessung: Diese Session zählt nicht in die Mittelwerte.';
   const STEP_LABELS = {baseline:'Ruhemessung vorher', pacer:'Atem-Session', post:'Ruhemessung nachher'};
 
   function fmt(value, digits){
     return value === null || value === undefined ? '–' : value.toFixed(digits).replace('.', ',');
+  }
+  function fmtSigned(value, digits){
+    if(value === null || value === undefined) return '–';
+    const text = fmt(Math.abs(value), digits);
+    if(Number(text.replace(',', '.')) === 0) return text;
+    return (value > 0 ? '+' : '−') + text;
   }
   function fmtBpm(bpm){ return fmt(bpm, Number.isInteger(bpm) ? 0 : 1); }
   function fmtCountdown(ms){
@@ -41,6 +48,7 @@
     return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
   }
   function round2(value){ return value === null || value === undefined ? null : Math.round(value * 100) / 100; }
+  function roundRate(value){ return value === null || value === undefined ? null : Math.round(value * 10000) / 10000; }
 
   /* ---------- Einstellungen ---------- */
   let settings = {
@@ -989,7 +997,8 @@
     function buildRecord(tensionAfter, note){
       const {draft, pattern, plannedMs, source, startedAt, pacerRange, summary, hiddenMs, tensionBefore:before} = pending;
       const segment = stats => stats && {
-        rmssd: round2(stats.rmssd), lnRmssd: round2(stats.lnRmssd), hr: round2(stats.hr), beats: stats.beats
+        rmssd: round2(stats.rmssd), lnRmssd: round2(stats.lnRmssd), hr: round2(stats.hr), beats: stats.beats,
+        artefactRate: roundRate(stats.artefactRate)
       };
       return {
         id: RT.uid(),
@@ -1008,7 +1017,7 @@
         pacerRmssd: round2(summary.pacerRmssd),
         rsaMean: round2(summary.rsaMean),
         rsaCycles: summary.cycleCount,
-        artefactRate: summary.artefactRate === null ? null : Math.round(summary.artefactRate * 10000) / 10000,
+        artefactRate: roundRate(summary.artefactRate),
         artefactCount: summary.artefactCount,
         beatCount: summary.beatCount,
         quality: summary.quality,
@@ -1038,6 +1047,7 @@
       let tensionAfter = null;
       const measured = measuring && summary.beatCount > 0;
       const poorSignal = measured && summary.quality !== 'gut';
+      const change = Core.rmssdChange(summary);
       root.innerHTML =
         '<div class="atem-card">' +
           '<h3 class="atem-card-title">Diese Session</h3>' +
@@ -1046,10 +1056,11 @@
             (measured
               ? stat('atemSumRsa', 'RSA Mittel') +
                 stat('atemSumBase', 'RMSSD vorher (ms)') + stat('atemSumPost', 'RMSSD nachher (ms)') +
-                stat('atemSumQuality', 'Artefakte')
+                stat('atemSumDiff', 'Differenz (ms)') + stat('atemSumQuality', 'Artefakte')
               : '') +
           '</div>' +
           (poorSignal ? '<p class="atem-hint" id="atemContactHint">Das Signal war gestört, die Werte sind daher nur eingeschränkt aussagekräftig. Meist liegt das am Gurtkontakt: Befeuchte die Elektroden und zieh den Gurt etwas fester.</p>' : '') +
+          (measured && change.diff !== null && change.disturbed ? '<p class="atem-hint" id="atemDisturbedHint">' + RMSSD_DISTURBED_TEXT + '</p>' : '') +
           (source === 'sim' ? '<p class="atem-hint">Simulatordaten, keine echte Messung.</p>' : '') +
         '</div>' +
         '<div class="atem-card">' +
@@ -1072,6 +1083,7 @@
         byId('atemSumRsa').textContent = summary.rsaMean === null ? '–' : fmt(summary.rsaMean, 1) + ' bpm';
         byId('atemSumBase').textContent = summary.baseline ? fmt(summary.baseline.rmssd, 1) : '–';
         byId('atemSumPost').textContent = summary.post ? fmt(summary.post.rmssd, 1) : '–';
+        byId('atemSumDiff').textContent = fmtSigned(change.diff, 1);
         byId('atemSumQuality').textContent = fmt(summary.artefactRate * 100, 1) + ' % · ' + summary.quality;
         byId('atemSumQuality').style.color = QUALITY_COLORS[summary.quality];
       }
@@ -1654,10 +1666,10 @@
     const parts = iso.split('-');
     return parts[2] + '.' + parts[1] + '.';
   }
-  function chartHtml(id, title){
+  function chartHtml(id, title, footer){
     return '<div class="atem-card"><h3 class="atem-card-title">' + title + '</h3>' +
       '<div class="atem-chart"><canvas id="' + id + '" role="img" aria-label="' + title + '"></canvas></div>' +
-      '<p class="atem-hint" id="' + id + 'Empty" hidden>Noch keine Daten.</p></div>';
+      '<p class="atem-hint" id="' + id + 'Empty" hidden>Noch keine Daten.</p>' + (footer || '') + '</div>';
   }
   /* Eigene Chart.js-Instanzen: Die Diagramme des Radtrainings werden getrennt verwaltet. */
   function createChartSet(){
@@ -1686,7 +1698,7 @@
             animation: false,
             interaction: {mode:'index', intersect:false},
             plugins: {
-              legend: {display: datasets.length >= 2, labels: {color:ink, boxWidth:12, boxHeight:2, filter: item => !item.text.startsWith('_')}},
+              legend: {display: datasets.length >= 2, labels: Object.assign({color:ink, boxWidth:12, boxHeight:2, filter: item => !item.text.startsWith('_')}, options.legendLabels)},
               tooltip: {filter: item => !item.dataset.label.startsWith('_')}
             },
             scales: {
@@ -1740,7 +1752,9 @@
           (previous === null ? '.' : ', Vorwoche ' + fmt(previous, digits) + ' ' + unit + '.'));
       };
       describe('RSA-Amplitude', 'bpm', 1, s => s.rsaMean);
-      describe('RMSSD vor der Session', 'ms', 1, s => s.baseline ? s.baseline.rmssd : null);
+      const rmssdValue = key => s => { const change = Core.rmssdChange(s); return change.disturbed ? null : change[key]; };
+      describe('RMSSD vor der Session', 'ms', 1, rmssdValue('pre'));
+      describe('RMSSD nach der Session', 'ms', 1, rmssdValue('post'));
       const both = records.filter(s => s.tensionBefore !== null && s.tensionBefore !== undefined && s.tensionAfter !== null && s.tensionAfter !== undefined);
       if(both.length){
         const mean = pick => both.reduce((sum, s) => sum + pick(s), 0) / both.length;
@@ -1765,6 +1779,34 @@
         '<p class="atem-hint">Kräftiger ist mehr Übungszeit. Ein ausgelassener Tag stört den Gewohnheitsaufbau kaum: Im Mittel brauchten Gewohnheiten rund 66 Tage, die Spanne reichte von 18 bis 254 (Lally et al. 2010).</p>';
     }
 
+    function rmssdFooterHtml(list, today){
+      const changes = list.map(Core.rmssdChange);
+      if(!changes.some(change => change.diff !== null)) return '';
+      const field = (id, days) => {
+        const {mean, count, excluded} = Core.rmssdChangeMean(list, today, days);
+        return '<div class="field"><div class="v atem-stat-value" id="' + id + '">' + fmtSigned(mean, 1) + ' ms</div>' +
+          '<div class="l">Letzte ' + days + ' Tage · ' + count + (count === 1 ? ' Session' : ' Sessions') +
+          (excluded ? ', ' + excluded + ' grau' : '') + '</div></div>';
+      };
+      const incomplete = changes.filter(change => change.diff === null && (change.pre !== null || change.post !== null)).length;
+      return '<div class="atem-stats atem-stats-two atem-chart-stats">' + field('atemRmssdDiff7', 7) + field('atemRmssdDiff30', 30) + '</div>' +
+        '<p class="atem-hint">Mittlere Differenz: nachher − vorher. Grau: Artefaktquote über 5 % in einer der beiden Messungen, zählt nicht in die Mittelwerte.' +
+        (incomplete ? ' Nicht dargestellt: ' + incomplete + (incomplete === 1 ? ' Session' : ' Sessions') + ' ohne beide Messungen.' : '') + '</p>';
+    }
+
+    function rmssdDetailHtml(s){
+      const change = Core.rmssdChange(s);
+      if(change.pre === null && change.post === null) return '';
+      const row = (label, value) => '<dt>' + label + '</dt><dd class="mono">' + value + '</dd>';
+      const rate = segment => segment && typeof segment.artefactRate === 'number' ? ' · ' + fmt(segment.artefactRate * 100, 1) + ' % Artefakte' : '';
+      return '<details class="atem-session-detail"><summary>Details</summary><dl>' +
+        row('RMSSD vorher', fmt(change.pre, 1) + ' ms' + rate(s.baseline)) +
+        row('RMSSD nachher', fmt(change.post, 1) + ' ms' + rate(s.post)) +
+        row('Differenz', fmtSigned(change.diff, 1) + ' ms') + '</dl>' +
+        (change.diff !== null && change.disturbed ? '<div class="atem-muted">' + RMSSD_DISTURBED_TEXT + '</div>' : '') +
+        '</details>';
+    }
+
     function listHtml(list){
       const planName = id => {
         const plan = plans.find(p => p.id === id);
@@ -1774,7 +1816,7 @@
         '<tr><td class="mono">' + fmtShortDate(s.date) + (s.time ? ' ' + RT.escapeHtml(s.time) : '') + '</td>' +
         '<td>' + RT.escapeHtml(TECHNIK_LABELS[s.technik] || s.technik) + (s.source === 'sim' ? ' <span class="atem-muted">(Simulator)</span>' : '') +
           (s.planId ? '<div class="atem-muted">' + RT.escapeHtml(planName(s.planId)) + '</div>' : '') +
-          (s.note ? '<div class="atem-muted">' + RT.escapeHtml(s.note) + '</div>' : '') + '</td>' +
+          (s.note ? '<div class="atem-muted">' + RT.escapeHtml(s.note) + '</div>' : '') + rmssdDetailHtml(s) + '</td>' +
         '<td class="mono">' + (s.bpm ? fmtBpm(s.bpm) : '–') + '</td>' +
         '<td class="mono">' + Math.round(Core.recordMinutes(s)) + '</td>' +
         '<td class="mono">' + fmt(s.rsaMean, 1) + '</td>' +
@@ -1785,12 +1827,29 @@
         : '<p class="atem-hint" id="atemHistoryNone">Keine passenden Sessions.</p>';
     }
 
+    /* Punkte statt Linie über die Sessions; die Verbindung je Session ist ein schwebender 1-px-Balken. */
+    function drawRmssdChart(list){
+      const entries = list
+        .map(s => Object.assign({date:s.date}, Core.rmssdChange(s)))
+        .filter(entry => entry.diff !== null);
+      const gray = cssToken('--ink-dim'), link = cssToken('--ink-soft');
+      const colors = color => entries.map(entry => entry.disturbed ? gray : color);
+      const points = (label, pick, color) => lineDataset(label, entries.map(pick), color, {
+        showLine:false, order:1, pointBackgroundColor:colors(color), pointBorderColor:colors(color)
+      });
+      chartSet.draw('atemChartRmssd', entries.map(entry => fmtShortDate(entry.date)), [
+        {type:'bar', label:'_Veränderung', data:entries.map(entry => [entry.pre, entry.post]), backgroundColor:entries.map(entry => entry.disturbed ? gray : link), barThickness:1, order:2},
+        points('vor Session', entry => entry.pre, CHART_AMBER),
+        points('nach Session', entry => entry.post, CHART_BLUE)
+      ], {yTitle:'ms', y:{beginAtZero:false, grace:'5%'}, legendLabels:{usePointStyle:true, boxWidth:8, boxHeight:8}});
+    }
+
     function drawCharts(list, records, today){
       chartSet.destroy();
       const labels = list.map(s => fmtShortDate(s.date));
       const accent = CHART_BLUE, second = CHART_AMBER;
       chartSet.draw('atemChartRsa', labels, [lineDataset('RSA', list.map(s => s.rsaMean), accent)], {yTitle:'bpm'});
-      chartSet.draw('atemChartRmssd', labels, [lineDataset('RMSSD', list.map(s => s.baseline ? s.baseline.rmssd : null), accent)], {yTitle:'ms'});
+      drawRmssdChart(list);
       chartSet.draw('atemChartTension', labels, [
         lineDataset('Vorher', list.map(s => s.tensionBefore), second),
         lineDataset('Nachher', list.map(s => s.tensionAfter), accent)
@@ -1833,7 +1892,7 @@
           '<div class="atem-checks">' + checkHtml('atemShowSim', 'Simulatordaten einbeziehen', showSimulated) + '</div>' +
         '</div>' +
         chartHtml('atemChartRsa', 'RSA-Amplitude je Session') +
-        chartHtml('atemChartRmssd', 'RMSSD vor der Session') +
+        chartHtml('atemChartRmssd', 'RMSSD vor und nach der Session', rmssdFooterHtml(list, today)) +
         chartHtml('atemChartTension', 'Anspannung vorher und nachher') +
         chartHtml('atemChartMinutes', 'Minuten pro Woche') +
         '<div class="atem-card"><h3 class="atem-card-title">Sessions</h3>' + listHtml(list) +
